@@ -1,8 +1,3 @@
-"""
-Face Recognition System API
-
-FastAPI application for face detection, recognition, and anti-spoofing.
-"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -14,18 +9,7 @@ from config import API_HOST, API_PORT
 app = FastAPI(
     title="Face Recognition API",
     description="""
-    Hệ thống nhận diện khuôn mặt với các tính năng:
-    
-    - **Face Detection**: Phát hiện khuôn mặt sử dụng MTCNN
-    - **Face Recognition**: Nhận diện khuôn mặt với InsightFace (ArcFace)
-    - **Anti-Spoofing**: Phát hiện giả mạo với texture analysis và liveness detection
-    - **Face Management**: Quản lý cơ sở dữ liệu khuôn mặt
-    
-    ## Quy trình sử dụng:
-    
-    1. **Đăng ký khuôn mặt**: Sử dụng `POST /add_face` để thêm khuôn mặt vào database
-    2. **Nhận diện**: Sử dụng `POST /recognize_face` để nhận diện khuôn mặt
-    3. **Chống giả mạo**: Sử dụng `POST /anti_spoofing` để kiểm tra tính xác thực
+    Face Recognition API
     """,
     version="1.0.0",
     docs_url="/docs",

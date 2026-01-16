@@ -9,11 +9,16 @@ A face recognition system with detection, recognition, and anti-spoofing capabil
 - **Anti-Spoofing** - Texture analysis, FFT moire detection, color & blur checks
 - **REST API** - FastAPI with OpenAPI documentation
 
+## Requirements
+
+- Python 3.10+
+- GPU: **Optional** (runs on CPU by default, GPU makes it faster)
+
 ## Installation
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/detection-face.git
+git clone ...
 cd detection-face
 
 # Create virtual environment
@@ -94,7 +99,3 @@ detection-face/
 ```bash
 python -m pytest tests/test_api.py -v
 ```
-
-## License
-
-MIT License

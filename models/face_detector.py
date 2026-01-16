@@ -1,9 +1,3 @@
-"""
-Face Detection Module using MTCNN
-
-MTCNN (Multi-task Cascaded Convolutional Networks) for face detection.
-Provides bounding boxes and facial landmarks for detected faces.
-"""
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from PIL import Image

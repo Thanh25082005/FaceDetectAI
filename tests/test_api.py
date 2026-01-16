@@ -1,6 +1,3 @@
-"""
-API Tests for Face Recognition System
-"""
 import pytest
 from fastapi.testclient import TestClient
 import io

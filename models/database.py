@@ -1,8 +1,3 @@
-"""
-Face Database Module
-
-SQLite-based storage for face embeddings with async support.
-"""
 import sqlite3
 import json
 import os

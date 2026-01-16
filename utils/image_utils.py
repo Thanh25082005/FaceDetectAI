@@ -1,6 +1,3 @@
-"""
-Image processing utilities for face recognition system
-"""
 import io
 import base64
 from typing import Tuple, Optional, List

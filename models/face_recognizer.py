@@ -1,9 +1,3 @@
-"""
-Face Recognition Module using InsightFace (ArcFace)
-
-InsightFace with ArcFace model for face feature extraction and recognition.
-Extracts 512-dimensional embeddings for face comparison.
-"""
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 import cv2

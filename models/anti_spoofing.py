@@ -1,13 +1,3 @@
-"""
-Anti-Spoofing Module for Face Recognition
-
-Implements liveness detection and texture analysis to prevent face spoofing attacks.
-Includes:
-- Local Binary Pattern (LBP) texture analysis
-- FFT-based screen/print detection
-- Color distribution analysis
-- Blur detection
-"""
 import numpy as np
 from typing import List, Dict, Optional
 import cv2
@@ -18,19 +8,7 @@ sys.path.append('..')
 from config import TEXTURE_THRESHOLD
 
 
-class AntiSpoofing:
-    """
-    Anti-spoofing detection using texture analysis and image quality checks
-    
-    Luồng xử lý (FAS Flow):
-    1. Nhận ảnh khuôn mặt đã crop
-    2. Phân tích texture với LBP (Local Binary Patterns)
-    3. Phát hiện moire patterns từ màn hình bằng FFT
-    4. Kiểm tra phân bố màu sắc (ảnh thật có phân bố tự nhiên hơn)
-    5. Đánh giá độ sắc nét (ảnh từ màn hình/in thường bị blur)
-    6. Kết hợp tất cả scores để đưa ra quyết định
-    """
-    
+class AntiSpoofing:    
     def __init__(self):
         """Initialize anti-spoofing detector"""
         pass
@@ -217,22 +195,6 @@ class AntiSpoofing:
         }
     
     def check_liveness(self, face_image: np.ndarray, frames: List[np.ndarray] = None) -> Dict:
-        """
-        Comprehensive liveness check combining all methods
-        
-        Luồng xử lý:
-        1. Texture Analysis (LBP) - 30%
-        2. Screen/Print Detection (FFT) - 25%
-        3. Color Distribution Analysis - 25%
-        4. Blur Detection - 20%
-        
-        Args:
-            face_image: Single face image for analysis
-            frames: Optional list of frames (for future video-based checks)
-        
-        Returns:
-            Dictionary with combined liveness results
-        """
         results = {
             'is_live': False,
             'confidence': 0.0,
