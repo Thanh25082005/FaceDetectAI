@@ -1,0 +1,4 @@
+#!/bin/bash
+# Mock fas.doAnno
+echo "MOCK: Annotating $1 -> $2"
+echo "{\"protein\":\"mock_data\", \"file\":\"$1\"}" > "$2"

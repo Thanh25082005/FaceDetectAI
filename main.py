@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from api.routes import router
+from api.auth import router as auth_router
 from config import API_HOST, API_PORT
 
 # Create FastAPI app
@@ -26,7 +27,9 @@ app.add_middleware(
 )
 
 # Include API routes
+# Include API routes
 app.include_router(router, prefix="/api/v1", tags=["Face Recognition"])
+app.include_router(auth_router, prefix="/api/v1", tags=["Authentication"])
 
 
 @app.get("/")

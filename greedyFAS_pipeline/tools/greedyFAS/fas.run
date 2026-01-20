@@ -1,0 +1,6 @@
+#!/bin/bash
+# Mock fas.run
+echo "MOCK: Calculating FAS Score $1 vs $2"
+echo -e "Seed\tQuery\tScore\tArchitecture"
+echo -e "Seed1\tQuery1\t1.00\tPF001,PF002"
+echo -e "Seed2\tQuery2\t0.98\tPF005,PF006"

@@ -15,17 +15,20 @@ import numpy as np
 from .schemas import (
     DetectFaceResponse, FaceDetection,
     RecognizeFaceResponse, RecognitionMatch,
-    AntiSpoofingResponse, AntiSpoofingChecks, TextureAnalysis, ReflectionAnalysis,
-    ColorAnalysis, BlurAnalysis,
     AddFaceResponse, GetFaceResponse, UpdateFaceResponse, DeleteFaceResponse,
-    HealthResponse
+    HealthResponse, MobileCheckinResponse
 )
 
 from models.face_detector import get_face_detector
 from models.face_recognizer import get_face_recognizer
-from models.anti_spoofing import get_anti_spoofing
+# from models.anti_spoofing import get_anti_spoofing # REMOVED
+
 from models.database import get_face_database
 from utils.image_utils import load_image_from_bytes
+from utils.geo_utils import calculate_distance
+import config
+from datetime import datetime
+from models.checkin_logger import get_checkin_logger
 
 router = APIRouter()
 
@@ -129,22 +132,42 @@ async def recognize_face(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
     
-    # Get recognizer and database
+    # Get detector, recognizer and database
+    detector = get_face_detector()
     recognizer = get_face_recognizer()
     db = get_face_database()
     
     try:
-        # Get embeddings from image
-        face_data = recognizer.get_embedding_from_full_image(image)
+        # Use MTCNN for detection + alignment (optimized pipeline)
+        aligned_faces = detector.extract_aligned_faces(image)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Recognition failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
     
-    if not face_data:
+    if not aligned_faces:
         return RecognizeFaceResponse(
             success=True,
             faces_detected=0,
             matches=[],
             message="No faces detected in image"
+        )
+    
+    # Extract embeddings using direct ArcFace model (no redundant detection)
+    face_data = []
+    for aligned_face, detection in aligned_faces:
+        embedding = recognizer.get_embedding_direct(aligned_face)
+        if embedding is not None:
+            face_data.append({
+                'embedding': embedding.tolist(),
+                'box': detection['box'],
+                'confidence': detection['confidence']
+            })
+    
+    if not face_data:
+        return RecognizeFaceResponse(
+            success=True,
+            faces_detected=len(aligned_faces),
+            matches=[],
+            message="Failed to extract embeddings from detected faces"
         )
     
     # Get all embeddings from database
@@ -173,8 +196,10 @@ async def recognize_face(
                 user_id=result['user_id'],
                 name=name,
                 similarity=result['similarity'],
-                is_match=result['is_match']
+                is_match=result['is_match'],
+                box=face['box']
             ))
+
     
     return RecognizeFaceResponse(
         success=True,
@@ -183,71 +208,7 @@ async def recognize_face(
     )
 
 
-@router.post("/anti_spoofing", response_model=AntiSpoofingResponse)
-async def check_anti_spoofing(file: UploadFile = File(...)):
-    """
-    Check if a face image is real or spoofed
-    
-    Performs texture analysis and screen reflection detection.
-    For blink detection, use video frames endpoint (coming soon).
-    """
-    # Read image
-    contents = await file.read()
-    
-    try:
-        image = load_image_from_bytes(contents)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
-    
-    # Detect face first
-    detector = get_face_detector()
-    
-    try:
-        faces = detector.extract_faces(image)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
-    
-    if not faces:
-        return AntiSpoofingResponse(
-            success=False,
-            is_live=False,
-            confidence=0.0,
-            checks=AntiSpoofingChecks(),
-            message="No face detected in image"
-        )
-    
-    # Use the largest face
-    face_image, _ = faces[0]
-    
-    # Run anti-spoofing checks
-    anti_spoof = get_anti_spoofing()
-    result = anti_spoof.check_liveness(face_image)
-    
-    # Build response
-    checks = AntiSpoofingChecks()
-    
-    if 'texture' in result['checks']:
-        t = result['checks']['texture']
-        checks.texture = TextureAnalysis(**t)
-    
-    if 'reflection' in result['checks']:
-        r = result['checks']['reflection']
-        checks.reflection = ReflectionAnalysis(**r)
-    
-    if 'color' in result['checks']:
-        c = result['checks']['color']
-        checks.color = ColorAnalysis(**c)
-    
-    if 'blur' in result['checks']:
-        b = result['checks']['blur']
-        checks.blur = BlurAnalysis(**b)
-    
-    return AntiSpoofingResponse(
-        success=True,
-        is_live=result['is_live'],
-        confidence=result['confidence'],
-        checks=checks
-    )
+
 
 
 @router.post("/add_face", response_model=AddFaceResponse)
@@ -269,19 +230,27 @@ async def add_face(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
     
-    # Get embedding
+    # Get detector and recognizer (optimized pipeline)
+    detector = get_face_detector()
     recognizer = get_face_recognizer()
     
     try:
-        face_data = recognizer.get_embedding_from_full_image(image)
+        # Use MTCNN for detection + alignment
+        aligned_result = detector.get_largest_aligned_face(image)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Feature extraction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
     
-    if not face_data:
+    if aligned_result is None:
         raise HTTPException(status_code=400, detail="No face detected in image")
     
-    # Use the first (or largest) face
-    embedding = face_data[0]['embedding']
+    aligned_face, detection = aligned_result
+    
+    # Extract embedding directly (no redundant detection)
+    embedding = recognizer.get_embedding_direct(aligned_face)
+    if embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to extract face embedding")
+    
+    embedding = embedding.tolist()
     
     # Store in database
     db = get_face_database()
@@ -340,6 +309,158 @@ async def delete_face(user_id: str):
     )
 
 
+@router.post("/mobile_checkin", response_model=MobileCheckinResponse)
+async def mobile_checkin(
+    file: UploadFile = File(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    expected_user_id: str = Form(None) # Optional for backward compatibility, strict for App
+):
+    """
+    Mobile Check-in Endpoint with Geolocation and Face Auth
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 1. Location Validation
+    dist = calculate_distance(latitude, longitude, config.COMPANY_LOCATION[0], config.COMPANY_LOCATION[1])
+    if dist > config.MAX_CHECKIN_DISTANCE:
+         return MobileCheckinResponse(
+             success=False, 
+             message=f"Location too far ({dist:.0f}m)", 
+             distance_meters=dist, 
+             timestamp=timestamp
+         )
+    
+    # 2. Face Authentication
+    # Read image
+    contents = await file.read()
+    
+    try:
+        image = load_image_from_bytes(contents)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
+    
+    
+    # Get detector and recognizer models
+    detector = get_face_detector()
+    recognizer = get_face_recognizer()
+    
+    try:
+        # Use MTCNN for detection + alignment
+        aligned_result = detector.get_largest_aligned_face(image)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+    
+    if aligned_result is None:
+        return MobileCheckinResponse(
+            success=False,
+            message="No face detected in image",
+            distance_meters=dist,
+            timestamp=timestamp
+        )
+    
+    aligned_face, detection = aligned_result
+    box = detection['box']
+    
+    # Extract embedding
+    embedding = recognizer.get_embedding_direct(aligned_face)
+
+    if embedding is None:
+        return MobileCheckinResponse(
+            success=False,
+            message="Failed to extract face embedding",
+            distance_meters=dist,
+            box=box,
+            timestamp=timestamp
+        )
+    
+    embedding = embedding.tolist()
+    
+    # Compare with database faces
+    db = get_face_database()
+    db_embeddings = db.get_all_embeddings()
+    
+    if not db_embeddings:
+        return MobileCheckinResponse(
+            success=False,
+            message="No faces in database to compare with",
+            distance_meters=dist,
+            box=box,
+            timestamp=timestamp
+        )
+    
+    query_embedding = np.array(embedding)
+    
+    # Use a higher threshold for check-in for stricter matching
+    recognition_threshold = config.CHECKIN_RECOGNITION_THRESHOLD
+    
+    result = recognizer.recognize(query_embedding, db_embeddings, threshold=recognition_threshold)
+    
+    if not result or not result['is_match']:
+        return MobileCheckinResponse(
+            success=False,
+            message="Face not recognized or similarity too low",
+            distance_meters=dist,
+            box=box,
+            timestamp=timestamp
+        )
+    
+    # 3. User ID Validation (if provided)
+    if expected_user_id and result['user_id'] != expected_user_id:
+        return MobileCheckinResponse(
+            success=False,
+            message=f"Recognized user ID '{result['user_id']}' does not match expected user ID '{expected_user_id}'",
+            distance_meters=dist,
+            box=box,
+            timestamp=timestamp
+        )
+
+    match = recognizer.recognize(query_embedding, db_embeddings, threshold=recognition_threshold)
+    
+    if match and match['is_match']:
+         # CHECK IF MATCHED USER IS THE LOGGED IN USER
+         if expected_user_id and match['user_id'] != expected_user_id:
+              return MobileCheckinResponse(
+                  success=False, 
+                  message=f"Face mismatch (Not {expected_user_id})", 
+                  distance_meters=dist, 
+                  box=box,
+                  timestamp=timestamp
+              )
+
+         # Success! Log it
+         user = db.get_face(match['user_id'])
+         name = user['name'] if user else "Unknown"
+         
+         logger = get_checkin_logger()
+         logger.log_checkin(
+            user_id=match['user_id'],
+            name=name,
+            camera_id="mobile_app", # Or a specific mobile device ID if available
+            location={'latitude': latitude, 'longitude': longitude},
+            checkin_type="mobile"
+         )
+
+         return MobileCheckinResponse(
+             success=True,
+             message="Check-in successful",
+             user_id=match['user_id'],
+             name=name,
+             similarity=match['similarity'],
+             distance_meters=dist,
+             box=box,
+             timestamp=timestamp
+         )
+    else:
+         return MobileCheckinResponse(
+             success=False, 
+             message="Face not recognized", 
+             distance_meters=dist, 
+             box=box,
+             timestamp=timestamp
+         )
+
+
 @router.post("/update_face", response_model=UpdateFaceResponse)
 async def update_face(
     file: UploadFile = File(None),
@@ -361,25 +482,49 @@ async def update_face(
     embedding = None
     
     # If new image provided, extract embedding
-    if file is not None:
+    if file is not None and file.filename:
         contents = await file.read()
+        
+        if not contents or len(contents) == 0:
+            raise HTTPException(status_code=400, detail="Empty file provided")
         
         try:
             image = load_image_from_bytes(contents)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
         
+        if image is None or image.size == 0:
+            raise HTTPException(status_code=400, detail="Failed to load image")
+        
+        # Optimized pipeline: MTCNN detect + align, then direct embedding
+        detector = get_face_detector()
         recognizer = get_face_recognizer()
         
         try:
-            face_data = recognizer.get_embedding_from_full_image(image)
+            aligned_result = detector.get_largest_aligned_face(image)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Feature extraction failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
         
-        if not face_data:
+        if aligned_result is None:
             raise HTTPException(status_code=400, detail="No face detected in image")
         
-        embedding = face_data[0]['embedding']
+        aligned_face, _ = aligned_result
+        
+        if aligned_face is None or aligned_face.size == 0:
+            raise HTTPException(status_code=400, detail="Failed to align face")
+        
+        embedding = recognizer.get_embedding_direct(aligned_face)
+        if embedding is None:
+            raise HTTPException(status_code=500, detail="Failed to extract face embedding")
+        
+        embedding = embedding.tolist()
+    
+    # Check if anything to update
+    if embedding is None and name is None:
+        return UpdateFaceResponse(
+            success=True,
+            message=f"No changes made for user {user_id}"
+        )
     
     # Update in database
     result = db.update_face(
@@ -392,3 +537,136 @@ async def update_face(
         success=result['success'],
         message=result['message']
     )
+
+
+# =============================================================================
+# Real-time Streaming Endpoints
+# =============================================================================
+
+from fastapi import WebSocket, WebSocketDisconnect
+from models.tracker import get_face_tracker
+from models.session_manager import get_session_manager
+from models.checkin_logger import get_checkin_logger
+from streaming.stream_processor import get_stream_processor
+import asyncio
+import base64
+import cv2
+
+
+@router.websocket("/ws/stream/{camera_id}")
+async def websocket_stream(websocket: WebSocket, camera_id: str):
+    """
+    WebSocket endpoint for real-time video streaming.
+    
+    Accepts base64-encoded frames and processes them through the pipeline.
+    Returns check-in events and track updates.
+    """
+    await websocket.accept()
+    
+    processor = get_stream_processor()
+    await processor.start()
+    
+    # Start processing loop in background
+    process_task = asyncio.create_task(processor.process_loop())
+    
+    try:
+        while True:
+            # Receive frame data
+            data = await websocket.receive_json()
+            
+            if data.get('type') == 'frame':
+                # Decode base64 frame
+                frame_b64 = data.get('frame')
+                if frame_b64:
+                    frame_bytes = base64.b64decode(frame_b64)
+                    nparr = np.frombuffer(frame_bytes, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    
+                    if frame is not None:
+                        await processor.add_frame(frame, camera_id)
+            
+            elif data.get('type') == 'ping':
+                await websocket.send_json({'type': 'pong'})
+            
+            # Send recent events
+            events = processor.get_recent_events(5)
+            stats = processor.get_stats()
+            
+            await websocket.send_json({
+                'type': 'update',
+                'events': events,
+                'stats': stats
+            })
+            
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await processor.stop()
+        process_task.cancel()
+
+
+@router.get("/tracks")
+async def get_active_tracks():
+    """Get all active face tracks"""
+    tracker = get_face_tracker()
+    tracks = tracker.get_active_tracks()
+    
+    return {
+        'success': True,
+        'count': len(tracks),
+        'tracks': [t.to_dict() for t in tracks]
+    }
+
+
+@router.get("/sessions")
+async def get_active_sessions():
+    """Get all active check-in sessions"""
+    session_manager = get_session_manager()
+    sessions = session_manager.get_all_sessions()
+    
+    return {
+        'success': True,
+        'count': len(sessions),
+        'sessions': [s.to_dict() for s in sessions]
+    }
+
+
+@router.get("/checkins")
+async def get_checkin_history(
+    minutes: int = Query(30, description="How far back to look"),
+    user_id: Optional[str] = Query(None, description="Filter by user"),
+    camera_id: Optional[str] = Query(None, description="Filter by camera")
+):
+    """Get recent check-in history"""
+    logger = get_checkin_logger()
+    records = logger.get_recent_checkins(minutes, user_id, camera_id)
+    
+    return {
+        'success': True,
+        'count': len(records),
+        'checkins': [r.to_dict() for r in records]
+    }
+
+
+@router.get("/checkins/today")
+async def get_checkins_today(user_id: Optional[str] = None):
+    """Get check-in count for today"""
+    logger = get_checkin_logger()
+    count = logger.get_checkin_count_today(user_id)
+    
+    return {
+        'success': True,
+        'count': count,
+        'user_id': user_id
+    }
+
+
+@router.get("/stream/stats")
+async def get_stream_stats():
+    """Get stream processor statistics"""
+    processor = get_stream_processor()
+    return {
+        'success': True,
+        'stats': processor.get_stats()
+    }
+

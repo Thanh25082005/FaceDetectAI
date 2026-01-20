@@ -1,101 +1,117 @@
-# Face Recognition API
+# 📸 Face Auth & Check-in System (Lite Version)
 
-A face recognition system with detection, recognition, and anti-spoofing capabilities.
+Hệ thống điểm danh, chấm công trực tuyến tối ưu hóa cho tốc độ và hiệu năng, sử dụng công nghệ Nhận diện khuôn mặt (Face Recognition).
+Dự án được xây dựng theo mô hình Full-Stack hiện đại với **ReactJS** (Frontend) và **FastAPI** (Backend).
 
-## Features
+> **Lưu ý:** Phiên bản này tập trung vào tốc độ nhận diện nhanh, đã loại bỏ các module kiểm tra giả mạo (Anti-Spoofing) phức tạp để tối ưu độ trễ.
 
-- **Face Detection** - MTCNN for detecting faces and landmarks
-- **Face Recognition** - InsightFace/ArcFace for 512-d embeddings
-- **Anti-Spoofing** - Texture analysis, FFT moire detection, color & blur checks
-- **REST API** - FastAPI with OpenAPI documentation
+---
 
-## Requirements
+## 🚀 Tính năng nổi bật
 
-- Python 3.10+
-- GPU: **Optional** (runs on CPU by default, GPU makes it faster)
+*   **Xác thực khuôn mặt (Face Authentication):** Nhận diện chính xác nhân viên qua khuôn mặt sử dụng InsightFace/ArcFace.
+*   **Chấm công Live Stream:** Chế độ quét thời gian thực qua WebSockets (10-15 FPS), mang lại trải nghiệm mượt mà không độ trễ.
+*   **Quản lý Người dùng:**
+    *   Đăng ký kèm lấy mẫu khuôn mặt (Face Enrollment).
+    *   Cập nhật thông tin và dữ liệu khuôn mặt.
+    *   Đăng nhập hệ thống bảo mật.
+*   **Giao diện Hiện đại:** Dashboard trực quan, hỗ trợ Mobile/Desktop, vẽ khung nhận diện (Bounding Box) thời gian thực.
+*   **Lịch sử Chấm công:** Lưu trữ log điểm danh chi tiết, bao gồm hình ảnh bằng chứng (Evidence).
 
-## Installation
+---
 
+## 🛠️ Công nghệ sử dụng
+
+### Backend (Python)
+*   **FastAPI:** Framework API hiệu năng cao, hỗ trợ tốt Async/Await.
+*   **WebSockets:** Truyền tải video stream thời gian thực.
+*   **OpenCV & InsightFace:** Core xử lý ảnh và trích xuất đặc trưng khuôn mặt.
+*   **SQLite:** Cơ sở dữ liệu nhẹ, không cần cài đặt server DB phức tạp.
+
+### Frontend (JavaScript)
+*   **ReactJS (Vite):** Tốc độ khởi động nhanh, trải nghiệm SPA (Single Page App).
+*   **TailwindCSS:** Mọi style đều được viết bằng utility classes tiện lợi.
+*   **Axios:** Giao tiếp HTTP API.
+
+---
+
+## ⚙️ Cài đặt & Chạy dự án
+
+### 1. Yêu cầu hệ thống
+*   **Python:** 3.8 trở lên.
+*   **Node.js:** 16 trở lên (Recommended: v18+).
+*   **GPU (Optional):** NVIDIA GPU + CUDA để đạt tốc độ nhận diện <50ms (Nếu không có sẽ chạy CPU vẫn ổn định).
+
+### 2. Cài đặt Backend
 ```bash
-# Clone repository
-git clone ...
-cd detection-face
+# Di chuyển vào thư mục gốc dự án
+cd /path/to/detection-face
 
-# Create virtual environment
+# Tạo môi trường ảo (khuyên dùng)
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 
-# Install dependencies
+# Cài đặt thư viện
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### Start Server
-
+### 3. Cài đặt Frontend
 ```bash
-uvicorn main:app --reload --port 8000
+# Di chuyển vào thư mục frontend
+cd frontend
+
+# Cài đặt gói npm
+npm install
 ```
 
-API docs: http://localhost:8000/docs
+---
 
-### API Endpoints
+## ▶️ Hướng dẫn Chạy (Run)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/detect_face` | POST | Detect faces in image |
-| `/api/v1/recognize_face` | POST | Recognize face against database |
-| `/api/v1/anti_spoofing` | POST | Check if face is real or spoofed |
-| `/api/v1/add_face` | POST | Add face to database |
-| `/api/v1/get_face/{user_id}` | GET | Get face data by user_id |
-| `/api/v1/delete_face/{user_id}` | DELETE | Delete face from database |
-| `/api/v1/update_face` | POST | Update face data |
+Bạn cần mở **2 Terminal** riêng biệt để chạy song song Backend và Frontend.
 
-### Examples
-
-**Add a face:**
+**Terminal 1: Chạy Backend (API Server)**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/add_face" \
-  -F "file=@photo.jpg" \
-  -F "user_id=user001" \
-  -F "name=John Doe"
+cd /path/to/detection-face
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+*Backend sẽ chạy tại: `http://localhost:8000`*
 
-**Recognize a face:**
+**Terminal 2: Chạy Frontend (Giao diện)**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/recognize_face" \
-  -F "file=@test.jpg"
+cd /path/to/detection-face/frontend
+npm run dev
 ```
+*Frontend sẽ chạy tại: `http://localhost:3000`*
 
-**Check anti-spoofing:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/anti_spoofing" \
-  -F "file=@face.jpg"
+---
+
+## 📖 Hướng dẫn Sử dụng nhanh
+
+1.  **Truy cập:** Mở trình duyệt vào `http://localhost:3000`.
+2.  **Đăng ký Mới:** Chọn "Đăng ký", điền thông tin và thực hiện quét khuôn mặt lần đầu (giữ khuôn mặt trong khung xanh).
+3.  **Đăng nhập:** Dùng User/Pass vừa tạo.
+4.  **Chấm công:**
+    *   Tại màn hình chính, nhấn nút **"⚡ Chế độ Live Stream"**.
+    *   Hệ thống sẽ bật Camera và tự động nhận diện.
+    *   Khi hiện thông báo **"Thành công"** (Khung xanh lá), bạn đã chấm công xong!
+
+---
+
+## 📂 Cấu trúc thư mục
+
 ```
-
-## Project Structure
-
-```
-detection-face/
-├── main.py                 # FastAPI entry point
-├── config.py               # Configuration
-├── requirements.txt        # Dependencies
-├── models/
-│   ├── face_detector.py    # MTCNN detection
-│   ├── face_recognizer.py  # InsightFace recognition
-│   ├── anti_spoofing.py    # Liveness detection
-│   └── database.py         # SQLite storage
-├── api/
-│   ├── routes.py           # API endpoints
-│   └── schemas.py          # Pydantic models
-├── utils/
-│   └── image_utils.py      # Image processing
-└── tests/
-    └── test_api.py         # API tests
-```
-
-## Testing
-
-```bash
-python -m pytest tests/test_api.py -v
+/detection-face
+├── api/                # Các API Endpoints (Auth, Checkin, Face CRUD)
+├── models/             # Core Logic (Detector, Recognizer, Session Manager)
+├── streaming/          # Xử lý luồng Video WebSocket
+├── database/           # SQLite (faces.db, checkins.db)
+├── frontend/           # Source code ReactJS
+│   ├── src/
+│   │   ├── components/ # Các thành phần UI (LiveCamera, Dashboard...)
+│   │   └── ...
+├── main.py             # File khởi chạy chính
+└── config.py           # Cấu hình hệ thống (Device, Threshold, Paths...)
 ```

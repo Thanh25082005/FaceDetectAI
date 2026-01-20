@@ -46,6 +46,8 @@ class RecognitionMatch(BaseModel):
     name: Optional[str] = None
     similarity: float
     is_match: bool
+    box: Optional[List[int]] = None
+
 
 
 class RecognizeFaceResponse(BaseModel):
@@ -56,57 +58,7 @@ class RecognizeFaceResponse(BaseModel):
     message: Optional[str] = None
 
 
-class TextureAnalysis(BaseModel):
-    """Texture analysis results"""
-    texture_variance: float
-    texture_entropy: float
-    texture_uniformity: float
-    laplacian_variance: float
-    texture_score: float
-    is_real: bool
 
-
-class ReflectionAnalysis(BaseModel):
-    """Screen reflection analysis results"""
-    center_energy: float
-    outer_energy: float
-    energy_ratio: float
-    is_screen: bool
-
-
-class ColorAnalysis(BaseModel):
-    """Color distribution analysis results"""
-    saturation_mean: float
-    saturation_std: float
-    cr_mean: float
-    cr_std: float
-    color_score: float
-    is_natural: bool
-
-
-class BlurAnalysis(BaseModel):
-    """Blur detection results"""
-    laplacian_variance: float
-    gradient_magnitude: float
-    sharpness_score: float
-    is_sharp: bool
-
-
-class AntiSpoofingChecks(BaseModel):
-    """Anti-spoofing check details"""
-    texture: Optional[TextureAnalysis] = None
-    reflection: Optional[ReflectionAnalysis] = None
-    color: Optional[ColorAnalysis] = None
-    blur: Optional[BlurAnalysis] = None
-
-
-class AntiSpoofingResponse(BaseModel):
-    """Response for anti-spoofing endpoint"""
-    success: bool
-    is_live: bool
-    confidence: float
-    checks: AntiSpoofingChecks
-    message: Optional[str] = None
 
 
 # ==================== Request Models ====================
@@ -171,3 +123,39 @@ class HealthResponse(BaseModel):
     version: str
     models_loaded: Dict[str, bool]
     database_users: int
+
+
+
+
+class MobileCheckinResponse(BaseModel):
+    """Response for mobile check-in endpoint"""
+    success: bool
+    message: str
+    user_id: Optional[str] = None
+    name: Optional[str] = None
+    similarity: Optional[float] = None
+    distance_meters: Optional[float] = None
+    box: Optional[List[int]] = None
+    timestamp: str
+
+
+
+# ==================== Auth Models ====================
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+    face_user_id: Optional[str] = None
+    full_name: Optional[str] = None
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    dob: str
+
+

@@ -1,7 +1,15 @@
-# Gemini Agent
-.agent/
+# Project Specific
 
-# Python
+.agent/
+data/
+uploads/
+results/
+backup_demos_*/
+greedyFAS_pipeline/outputs/
+greedyFAS_pipeline/inputs/
+backup_demos_20260120_042113/
+
+# Python / Backend
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,6 +30,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual Environment
 venv/
@@ -29,52 +38,50 @@ env/
 ENV/
 .venv/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Database
-data/
-*.db
-*.sqlite3
-
-# Model weights and cache
-*.onnx
-*.pth
-*.pt
-*.h5
-.insightface/
-
-# Logs
-*.log
-logs/
-
-# Test and Coverage
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# Logs & Databases
+*.log
+logs/
+*.db
+*.sqlite3
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
 
-# OS files
+# Model weights
+*.onnx
+*.pth
+*.pt
+*.h5
+.insightface/
+
+# Frontend (Node/React)
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/coverage/
+
+
+# IDE / OS / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
-
-# Jupyter Notebook
 .ipynb_checkpoints/
 
-# Temporary files
 tmp/
 temp/
 *.tmp
 
-# Uploaded images (if any)
-uploads/
+libs/silent_face/

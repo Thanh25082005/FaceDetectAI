@@ -144,7 +144,81 @@ class FaceDatabase:
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
+
+    # ==================== USER AUTHENTICATION ====================
     
+    def create_user(self, username, password_hash, full_name, dob, face_user_id) -> Dict:
+        """Create a new user account linked to a face_id"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, full_name, dob, face_user_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (username, password_hash, full_name, dob, face_user_id))
+            
+            conn.commit()
+            return {'success': True, 'message': 'User created successfully', 'username': username}
+        except sqlite3.IntegrityError:
+            return {'success': False, 'message': 'Username already exists'}
+        finally:
+            conn.close()
+
+    def get_user_by_username(self, username) -> Optional[Dict]:
+        """Get user details by username"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+
+    def _init_db(self):
+        """Initialize database tables"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # FACES TABLE
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS faces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT UNIQUE NOT NULL,
+                name TEXT,
+                embedding TEXT NOT NULL,
+                metadata TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # USERS TABLE (New)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                dob TEXT,
+                face_user_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(face_user_id) REFERENCES faces(user_id)
+            )
+        """)
+        
+        # Create index on user_id for faster lookups
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON users(username)")
+        
+        conn.commit()
+        conn.close()
+    
+    # ... (Rest of existing methods)
+
     def update_face(
         self,
         user_id: str,

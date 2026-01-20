@@ -13,7 +13,119 @@ except ImportError:
 from scipy.spatial.distance import cosine
 import sys
 sys.path.append('..')
-from config import FACE_RECOGNITION_THRESHOLD, FACE_SIZE
+from config import FACE_RECOGNITION_THRESHOLD, FACE_SIZE, FR_EMA_ALPHA, FR_MIN_FRAMES
+
+
+class EmbeddingAggregator:
+    """
+    Aggregate face embeddings over time for a single track.
+    
+    Uses Exponential Moving Average (EMA) for smooth aggregation,
+    with normalization to maintain unit vector property.
+    """
+    
+    def __init__(self, ema_alpha: float = None):
+        """
+        Initialize embedding aggregator.
+        
+        Args:
+            ema_alpha: EMA weight (higher = more weight to recent)
+        """
+        self.ema_alpha = ema_alpha or FR_EMA_ALPHA
+        self.embeddings: List[np.ndarray] = []
+        self.aggregated: Optional[np.ndarray] = None
+        self.similarity_history: List[float] = []
+    
+    def add_embedding(self, embedding: np.ndarray):
+        """
+        Add an embedding and update aggregation.
+        
+        Args:
+            embedding: 512-d normalized embedding vector
+        """
+        if embedding is None:
+            return
+        
+        # Normalize input
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        
+        self.embeddings.append(embedding)
+        
+        # Update EMA
+        if self.aggregated is None:
+            self.aggregated = embedding.copy()
+        else:
+            self.aggregated = (
+                self.ema_alpha * embedding + 
+                (1 - self.ema_alpha) * self.aggregated
+            )
+            # Re-normalize
+            norm = np.linalg.norm(self.aggregated)
+            if norm > 0:
+                self.aggregated = self.aggregated / norm
+    
+    def get_aggregated(self) -> Optional[np.ndarray]:
+        """Get the aggregated embedding (EMA)"""
+        return self.aggregated
+    
+    def get_mean(self) -> Optional[np.ndarray]:
+        """Get the mean of all embeddings"""
+        if not self.embeddings:
+            return None
+        mean = np.mean(self.embeddings, axis=0)
+        norm = np.linalg.norm(mean)
+        return mean / norm if norm > 0 else mean
+    
+    def can_recognize(self) -> bool:
+        """Check if we have enough embeddings for recognition"""
+        return len(self.embeddings) >= FR_MIN_FRAMES
+    
+    def get_stability(self) -> float:
+        """
+        Get embedding stability (consistency) score.
+        
+        High stability = consistent face embeddings = more reliable match.
+        """
+        if len(self.embeddings) < 2:
+            return 0.0
+        
+        # Compute pairwise similarities of recent embeddings
+        recent = self.embeddings[-min(10, len(self.embeddings)):]
+        similarities = []
+        
+        for i in range(len(recent)):
+            for j in range(i + 1, len(recent)):
+                sim = 1 - cosine(recent[i], recent[j])
+                similarities.append(sim)
+        
+        return np.mean(similarities) if similarities else 0.0
+    
+    def add_match_result(self, similarity: float):
+        """Track similarity scores from recognition attempts"""
+        self.similarity_history.append(similarity)
+    
+    def get_average_similarity(self) -> float:
+        """Get average similarity from match attempts"""
+        if not self.similarity_history:
+            return 0.0
+        return np.mean(self.similarity_history)
+    
+    def reset(self):
+        """Reset aggregator"""
+        self.embeddings.clear()
+        self.aggregated = None
+        self.similarity_history.clear()
+    
+    def to_dict(self) -> Dict:
+        """Convert to dictionary"""
+        return {
+            'count': len(self.embeddings),
+            'can_recognize': self.can_recognize(),
+            'stability': self.get_stability(),
+            'average_similarity': self.get_average_similarity()
+        }
 
 
 class FaceRecognizer:
@@ -45,8 +157,57 @@ class FaceRecognizer:
             # Prepare model for inference
             ctx_id = 0 if device == 'cuda' else -1
             self.app.prepare(ctx_id=ctx_id, det_size=(640, 640))
+            
+            # Cache recognition model for direct embedding extraction
+            self.rec_model = None
+            for model in self.app.models.values():
+                if hasattr(model, 'get_feat'):
+                    self.rec_model = model
+                    break
         else:
             self.app = None
+            self.rec_model = None
+    
+    def get_embedding_direct(self, aligned_face: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Extract embedding directly from a pre-aligned face image (112x112).
+        This method does NOT run face detection - use for aligned faces from MTCNN.
+        
+        Args:
+            aligned_face: Pre-aligned face image (112x112) in BGR format
+        
+        Returns:
+            512-dimensional embedding vector or None if extraction fails
+        """
+        if self.rec_model is None:
+            raise RuntimeError("Recognition model not available. Please install insightface.")
+        
+        try:
+            # Ensure input is 112x112
+            if aligned_face.shape[:2] != (112, 112):
+                aligned_face = cv2.resize(aligned_face, (112, 112))
+            
+            # Use cv2.dnn.blobFromImage for correct preprocessing
+            # - Scale by 1/127.5
+            # - Subtract mean (127.5, 127.5, 127.5)
+            # - Swap BGR to RGB
+            blob = cv2.dnn.blobFromImage(
+                aligned_face, 
+                scalefactor=1.0/127.5, 
+                size=(112, 112), 
+                mean=(127.5, 127.5, 127.5), 
+                swapRB=True
+            )
+            
+            # Run inference directly with ONNX session
+            input_name = self.rec_model.session.get_inputs()[0].name
+            output = self.rec_model.session.run(None, {input_name: blob})
+            embedding = output[0].flatten()
+            
+            return embedding
+        except Exception as e:
+            print(f"Embedding extraction failed: {e}")
+            return None
     
     def get_embedding(self, face_image: np.ndarray) -> Optional[np.ndarray]:
         """
@@ -203,11 +364,14 @@ class FaceRecognizer:
 _recognizer_instance: Optional[FaceRecognizer] = None
 
 
-def get_face_recognizer(device: str = 'cpu') -> FaceRecognizer:
+def get_face_recognizer(device: str = None) -> FaceRecognizer:
     """
-    Get or create a FaceRecognizer singleton instance
+    Get singleton instance of FaceRecognizer
     """
     global _recognizer_instance
+    if device is None:
+        from config import DEVICE
+        device = DEVICE
     if _recognizer_instance is None:
         _recognizer_instance = FaceRecognizer(device=device)
     return _recognizer_instance

@@ -2,6 +2,7 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from PIL import Image
 import cv2
+from skimage import transform as trans
 
 try:
     from facenet_pytorch import MTCNN
@@ -13,6 +14,16 @@ except ImportError:
 import sys
 sys.path.append('..')
 from config import FACE_DETECTION_CONFIDENCE
+
+# ArcFace standard alignment reference points for 112x112 image
+# Based on 5 landmarks: left_eye, right_eye, nose, mouth_left, mouth_right
+ARCFACE_SRC = np.array([
+    [38.2946, 51.6963],   # left eye
+    [73.5318, 51.5014],   # right eye
+    [56.0252, 71.7366],   # nose
+    [41.5493, 92.3655],   # mouth left
+    [70.7299, 92.2041]    # mouth right
+], dtype=np.float32)
 
 
 class FaceDetector:
@@ -60,6 +71,10 @@ class FaceDetector:
         """
         if self.detector is None:
             raise RuntimeError("MTCNN not available. Please install facenet-pytorch.")
+        
+        # Validate input image
+        if image is None or image.size == 0:
+            return []
         
         # Convert BGR to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -153,17 +168,104 @@ class FaceDetector:
                                                   (x[1]['box'][3] - x[1]['box'][1]))
         
         return largest_face
+    
+    @staticmethod
+    def align_face(image: np.ndarray, landmarks: Dict, output_size: int = 112) -> Optional[np.ndarray]:
+        """
+        Align face using 5 landmarks to standard ArcFace format (112x112)
+        
+        Args:
+            image: Input image in BGR format
+            landmarks: Dictionary with keys: left_eye, right_eye, nose, mouth_left, mouth_right
+            output_size: Output image size (default 112 for ArcFace)
+        
+        Returns:
+            Aligned face image (112x112) or None if alignment fails
+        """
+        try:
+            # Extract landmark coordinates
+            src_pts = np.array([
+                landmarks['left_eye'],
+                landmarks['right_eye'],
+                landmarks['nose'],
+                landmarks['mouth_left'],
+                landmarks['mouth_right']
+            ], dtype=np.float32)
+            
+            # Compute similarity transform
+            tform = trans.SimilarityTransform()
+            tform.estimate(src_pts, ARCFACE_SRC)
+            
+            # Apply transform
+            M = tform.params[0:2, :]
+            aligned = cv2.warpAffine(image, M, (output_size, output_size), borderValue=0.0)
+            
+            return aligned
+        except Exception as e:
+            print(f"Face alignment failed: {e}")
+            return None
+    
+    def extract_aligned_faces(self, image: np.ndarray, output_size: int = 112) -> List[Tuple[np.ndarray, Dict]]:
+        """
+        Detect faces and return aligned face images ready for ArcFace
+        
+        Args:
+            image: Input image in BGR format
+            output_size: Output aligned face size (default 112 for ArcFace)
+        
+        Returns:
+            List of tuples (aligned_face_image, detection_info)
+            Each aligned face is (112x112) BGR image suitable for ArcFace
+        """
+        detections = self.detect_faces(image)
+        aligned_faces = []
+        
+        for detection in detections:
+            # Must have landmarks for alignment
+            if 'landmarks' not in detection:
+                continue
+            
+            aligned = self.align_face(image, detection['landmarks'], output_size)
+            
+            if aligned is not None:
+                aligned_faces.append((aligned, detection))
+        
+        return aligned_faces
+    
+    def get_largest_aligned_face(self, image: np.ndarray, output_size: int = 112) -> Optional[Tuple[np.ndarray, Dict]]:
+        """
+        Get the largest aligned face from the image
+        
+        Args:
+            image: Input image in BGR format
+            output_size: Output aligned face size (default 112 for ArcFace)
+        
+        Returns:
+            Tuple of (aligned_face_image, detection_info) or None if no face detected
+        """
+        aligned_faces = self.extract_aligned_faces(image, output_size)
+        
+        if not aligned_faces:
+            return None
+        
+        # Find largest by original detection box area
+        largest = max(aligned_faces, key=lambda x: (x[1]['box'][2] - x[1]['box'][0]) * 
+                                                    (x[1]['box'][3] - x[1]['box'][1]))
+        return largest
 
 
 # Singleton instance for reuse
 _detector_instance: Optional[FaceDetector] = None
 
 
-def get_face_detector(device: str = 'cpu') -> FaceDetector:
+def get_face_detector(device: str = None) -> FaceDetector:
     """
-    Get or create a FaceDetector singleton instance
+    Get singleton instance of FaceDetector
     """
     global _detector_instance
+    if device is None:
+        from config import DEVICE
+        device = DEVICE
     if _detector_instance is None:
         _detector_instance = FaceDetector(device=device)
     return _detector_instance
