@@ -1,4 +1,4 @@
-# 🛡️ Face Auth & Secure Check-in System (Advanced FAS Edition)
+# Check-in System (Advanced FAS Edition)
 
 A modern face recognition and authentication system integrated with **Face Anti-Spoofing (FAS)** technology to ensure maximum security and accuracy. This project provides a complete Full-stack solution, from an AI-powered Backend to an intuitive Frontend Dashboard.
 
@@ -6,17 +6,17 @@ A modern face recognition and authentication system integrated with **Face Anti-
 
 ## 🚀 Key Features
 
-*   **🛡️ Face Anti-Spoofing (FAS):** Integrated with **Silent-Face-Anti-Spoofing** (MiniFASNet). Detects and rejects spoofing attempts using photos, videos, or masks in real-time.
-*   **👤 Accurate Face Recognition:** Powered by **InsightFace (ArcFace)** with the `buffalo_l` model, ensuring high precision even in varying lighting conditions.
-*   **⚡ Live Stream Processing:** Processes video streams via **WebSockets**, supporting real-time bounding box overlays and user information display with ultra-low latency.
-*   **🔐 Auth & User Management:**
+*   **Face Anti-Spoofing (FAS):** Integrated with **Silent-Face-Anti-Spoofing** (MiniFASNet). Detects and rejects spoofing attempts using photos, videos, or masks in real-time.
+*   **Accurate Face Recognition:** Powered by **InsightFace (ArcFace)** with the `buffalo_l` model, ensuring high precision even in varying lighting conditions.
+*   **Live Stream Processing:** Processes video streams via **WebSockets**, supporting real-time bounding box overlays and user information display with ultra-low latency.
+*   **Auth & User Management:**
     *   **Enrollment:** Secure registration for new users with face sample collection (requires liveness check).
     *   **Secure Check-in:** A dedicated check-in mode that performs simultaneous face recognition and liveness detection.
-*   **📊 Dashboard & History:** Logs all check-in events with image evidence stored in the `data/evidence` directory.
+*   **Dashboard & History:** Logs all check-in events with image evidence stored in the `data/evidence` directory.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -42,7 +42,7 @@ graph TD
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 ### 1. System Requirements
 *   **OS:** Linux (Ubuntu recommended) / Windows / macOS.
@@ -87,7 +87,7 @@ npm run dev -- --port 3000
 
 ---
 
-## 📡 Key API Endpoints
+## Key API Endpoints
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -99,7 +99,7 @@ npm run dev -- --port 3000
 
 ---
 
-## 🔧 Advanced Configuration (`config.py`)
+## Advanced Configuration (`config.py`)
 
 Customize system behavior in `config.py`:
 *   `RECOGNITION_THRESHOLD`: Recognition sensitivity (default `0.5`).
@@ -108,7 +108,7 @@ Customize system behavior in `config.py`:
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 > [!IMPORTANT]
 > **Camera Issues:** Ensure the browser has camera permissions and no other application is currently using the camera.
@@ -121,7 +121,7 @@ Customize system behavior in `config.py`:
 
 ---
 
-## 📂 Directory Structure
+## Directory Structure
 
 ```text
 /detection-face
