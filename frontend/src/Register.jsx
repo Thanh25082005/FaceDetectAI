@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import axios from 'axios';
-import { User, Lock, Calendar, Camera, ArrowRight, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Lock, Calendar, Camera, ArrowRight, ArrowLeft, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 export default function Register() {
     const navigate = useNavigate();
+    const location = useLocation();
     const webcamRef = useRef(null);
 
     const [step, setStep] = useState(1); // 1: Info, 2: Face Scan
@@ -20,6 +21,32 @@ export default function Register() {
     });
 
     const [faceUserId, setFaceUserId] = useState(null);
+    const [statusMessage, setStatusMessage] = useState('Vui lòng nhìn thẳng vào camera');
+    const detectionInterval = useRef(null);
+
+    // Initial message from navigation if any
+    useEffect(() => {
+        if (location.state?.message) {
+            // Can be used to show "Success" from a previous attempt if needed
+        }
+    }, [location]);
+
+    // Cleanup interval on unmount
+    useEffect(() => {
+        return () => {
+            if (detectionInterval.current) {
+                clearInterval(detectionInterval.current);
+            }
+        };
+    }, []);
+
+    // Also stop if step changes back to 1
+    useEffect(() => {
+        if (step === 1 && detectionInterval.current) {
+            clearInterval(detectionInterval.current);
+            detectionInterval.current = null;
+        }
+    }, [step]);
 
     const handleRegister = async (e) => {
         e.preventDefault();
@@ -40,11 +67,45 @@ export default function Register() {
         }
     };
 
-    const handleFaceScan = async () => {
-        const imageSrc = webcamRef.current.getScreenshot();
-        if (!imageSrc) return;
+    const startDetection = () => {
+        if (detectionInterval.current || step !== 2) return;
 
+        console.log("Starting Face Detection loop...");
+        setStatusMessage('Đang tìm kiếm khuôn mặt...');
+
+        detectionInterval.current = setInterval(async () => {
+            const imageSrc = webcamRef.current?.getScreenshot();
+            if (!imageSrc) return;
+
+            try {
+                const res_img = await fetch(imageSrc);
+                const blob = await res_img.blob();
+                const detectFormData = new FormData();
+                detectFormData.append('file', blob, 'detect.jpg');
+
+                const detectRes = await axios.post('/api/v1/detect_face', detectFormData);
+
+                if (detectRes.data.success && detectRes.data.faces_count > 0) {
+                    console.log("Face detected! Triggering enrollment...");
+                    // Stop loop immediately
+                    if (detectionInterval.current) {
+                        clearInterval(detectionInterval.current);
+                        detectionInterval.current = null;
+                    }
+                    handleFaceEnroll(imageSrc);
+                }
+            } catch (err) {
+                // Silently log detection errors to avoid UI flicker
+                console.error("Detection polling error:", err);
+            }
+        }, 1500);
+    };
+
+    const handleFaceEnroll = async (imageSrc) => {
         setLoading(true);
+        setStatusMessage('Đang phân tích bảo mật và đăng ký...');
+        setError('');
+
         try {
             const res = await fetch(imageSrc);
             const blob = await res.blob();
@@ -54,13 +115,25 @@ export default function Register() {
             data.append('user_id', faceUserId);
             data.append('name', formData.full_name);
 
-            await axios.post('/api/v1/add_face', data);
+            const enrollRes = await axios.post('/api/v1/add_face', data);
 
-            // Success! Redirect to login
-            navigate('/login');
-
+            if (enrollRes.data.success) {
+                setStatusMessage('✅ Đăng ký thành công!');
+                setTimeout(() => {
+                    navigate('/login', { state: { message: "Đăng ký thành công! Vui lòng hoàn tất bằng cách đăng nhập." } });
+                }, 1500);
+            }
         } catch (err) {
-            setError("Không tìm thấy khuôn mặt hoặc ảnh mờ. Vui lòng thử lại.");
+            const msg = err.response?.data?.detail || "Đăng ký thất bại. Vui lòng thử lại.";
+            console.error("Enrollment failed:", msg);
+            setError(msg);
+            setStatusMessage('Vui lòng thử lại');
+
+            // Wait 3s before restarting detection loop
+            setTimeout(() => {
+                setError('');
+                startDetection();
+            }, 3000);
         } finally {
             setLoading(false);
         }
@@ -152,25 +225,45 @@ export default function Register() {
                     </form>
                 ) : (
                     <div className="text-center">
-                        <p className="mb-4 text-gray-600">Vui lòng nhìn thẳng vào camera để đăng ký khuôn mặt.</p>
+                        <p className={`mb-4 font-medium ${loading ? 'text-blue-600' : 'text-gray-600'}`}>
+                            {statusMessage}
+                        </p>
 
-                        <div className="aspect-[3/4] bg-black rounded-lg overflow-hidden relative mb-4 mx-auto max-w-xs ring-4 ring-blue-100">
+                        <div className={`aspect-[3/4] bg-black rounded-lg overflow-hidden relative mb-4 mx-auto max-w-xs ring-4 transition-all ${loading ? 'ring-blue-500 scale-[1.02]' : 'ring-gray-100'}`}>
                             <Webcam
                                 audio={false}
                                 ref={webcamRef}
                                 screenshotFormat="image/jpeg"
                                 videoConstraints={{ facingMode: "user" }}
                                 className="w-full h-full object-cover"
+                                onUserMedia={startDetection}
                             />
+                            {loading && (
+                                <div className="absolute inset-0 bg-blue-600/10 flex items-center justify-center backdrop-blur-[1px]">
+                                    <div className="bg-white/90 p-4 rounded-2xl shadow-xl flex flex-col items-center gap-2">
+                                        <Loader2 className="animate-spin text-blue-600" size={32} />
+                                        <span className="text-sm font-bold text-gray-800">Đang xử lý...</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        <button
-                            onClick={handleFaceScan}
-                            disabled={loading}
-                            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
-                        >
-                            {loading ? <Loader2 className="animate-spin" /> : <><Camera size={18} /> Chụp & Hoàn tất</>}
-                        </button>
+                        {!loading && (
+                            <div className="mt-6 flex flex-col gap-3">
+                                <div className="flex justify-center gap-2 text-xs text-gray-400">
+                                    <span className="flex items-center gap-1">
+                                        <CheckCircle size={12} className="text-green-500" /> Auto-detect ready
+                                    </span>
+                                </div>
+
+                                <button
+                                    onClick={() => setStep(1)}
+                                    className="flex items-center justify-center gap-2 text-sm font-semibold text-gray-500 hover:text-blue-600 transition-colors"
+                                >
+                                    <ArrowLeft size={16} /> Quay lại chỉnh sửa thông tin
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

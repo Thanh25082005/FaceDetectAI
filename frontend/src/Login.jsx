@@ -1,14 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { User, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { User, Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Login() {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
+
+    useEffect(() => {
+        if (location.state?.message) {
+            setSuccessMessage(location.state.message);
+            // Clear message from state so it doesn't reappear on reload
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
 
     const [formData, setFormData] = useState({
         username: '',
@@ -43,6 +53,12 @@ export default function Login() {
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
             <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
                 <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Đăng nhập</h1>
+
+                {successMessage && (
+                    <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm mb-4 flex items-center gap-2 border border-green-100">
+                        <CheckCircle size={16} /> {successMessage}
+                    </div>
+                )}
 
                 {error && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 flex items-center gap-2">
