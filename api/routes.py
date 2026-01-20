@@ -16,12 +16,13 @@ from .schemas import (
     DetectFaceResponse, FaceDetection,
     RecognizeFaceResponse, RecognitionMatch,
     AddFaceResponse, GetFaceResponse, UpdateFaceResponse, DeleteFaceResponse,
-    HealthResponse, MobileCheckinResponse
+    HealthResponse, MobileCheckinResponse,
+    FASCheckinResponse, FASCheckinStep
 )
 
 from models.face_detector import get_face_detector
 from models.face_recognizer import get_face_recognizer
-# from models.anti_spoofing import get_anti_spoofing # REMOVED
+from models.anti_spoofing import get_fas_predictor
 
 from models.database import get_face_database
 from utils.image_utils import load_image_from_bytes
@@ -117,7 +118,7 @@ async def detect_face(file: UploadFile = File(...)):
 @router.post("/recognize_face", response_model=RecognizeFaceResponse)
 async def recognize_face(
     file: UploadFile = File(...),
-    threshold: float = Query(0.5, ge=0.0, le=1.0, description="Similarity threshold for matching")
+    threshold: float = Query(config.FR_THRESHOLD, ge=0.0, le=1.0, description="Similarity threshold for matching")
 ):
     """
     Recognize faces in an uploaded image by comparing with database
@@ -392,7 +393,7 @@ async def mobile_checkin(
     query_embedding = np.array(embedding)
     
     # Use a higher threshold for check-in for stricter matching
-    recognition_threshold = config.CHECKIN_RECOGNITION_THRESHOLD
+    recognition_threshold = config.FR_THRESHOLD
     
     result = recognizer.recognize(query_embedding, db_embeddings, threshold=recognition_threshold)
     
@@ -459,6 +460,206 @@ async def mobile_checkin(
              box=box,
              timestamp=timestamp
          )
+
+
+@router.post("/checkin_fas", response_model=FASCheckinResponse)
+async def checkin_fas(
+    file: UploadFile = File(...),
+    expected_user_id: str = Form(None)
+):
+    """
+    Enhanced Check-in Endpoint with Step-by-Step FAS + Recognition
+    """
+    steps = []
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # helper to add steps
+    def add_step(name, status, message, score=None):
+        steps.append(FASCheckinStep(
+            step_name=name,
+            status=status,
+            message=message,
+            score=score
+        ))
+
+    # 1. Read image
+    contents = await file.read()
+    try:
+        image = load_image_from_bytes(contents)
+    except Exception as e:
+        add_step("loading", "failed", f"Invalid image: {str(e)}")
+        return FASCheckinResponse(
+            success=False,
+            message="Image loading failed",
+            steps=steps,
+            current_step="loading"
+        )
+
+    # 2. Face Detection
+    add_step("detecting", "pending", "Looking for face...")
+    detector = get_face_detector()
+    try:
+        aligned_result = detector.get_largest_aligned_face(image)
+    except Exception as e:
+        add_step("detecting", "failed", f"Detection error: {str(e)}")
+        return FASCheckinResponse(
+            success=False,
+            message="Detection failed",
+            steps=steps,
+            current_step="detecting"
+        )
+    
+    if aligned_result is None:
+        add_step("detecting", "failed", "No face detected")
+        return FASCheckinResponse(
+            success=False,
+            message="No face detected",
+            steps=steps,
+            current_step="detecting"
+        )
+    
+    aligned_face, detection = aligned_result
+    box = detection['box'] # [x1, y1, x2, y2]
+    add_step("detecting", "success", "Face found", score=detection['confidence'])
+    
+    # 3. Anti-Spoofing (FAS)
+    add_step("anti_spoofing", "pending", "Checking authenticity...")
+    fas_predictor = get_fas_predictor()
+    try:
+        fas_result = fas_predictor.predict(image)
+        fas_score = fas_result['score']
+        # Be strict for single-image check-in
+        is_real = fas_result['is_real'] and fas_score >= config.FAS_ACCEPT_THRESHOLD
+        
+        add_step("anti_spoofing", "success" if is_real else "failed", 
+                 "Real face verified" if is_real else f"Spoof detected (score: {fas_score:.4f})", 
+                 score=fas_score)
+        
+        if not is_real:
+            return FASCheckinResponse(
+                success=False,
+                message="Spoof detected",
+                steps=steps,
+                current_step="anti_spoofing",
+                fas_score=fas_score,
+                is_spoof=True,
+                box=box
+            )
+    except Exception as e:
+        add_step("anti_spoofing", "error", f"FAS error: {str(e)}")
+        return FASCheckinResponse(
+            success=False,
+            message="FAS process failed",
+            steps=steps,
+            current_step="anti_spoofing",
+            box=box
+        )
+    
+    # 4. Face Recognition
+    add_step("recognizing", "pending", "Recognizing person...")
+    recognizer = get_face_recognizer()
+    db = get_face_database()
+    
+    try:
+        embedding = recognizer.get_embedding_direct(aligned_face)
+        if embedding is None:
+            add_step("recognizing", "failed", "Failed to extract features")
+            return FASCheckinResponse(
+                success=False,
+                message="Feature extraction failed",
+                steps=steps,
+                current_step="recognizing",
+                fas_score=fas_score,
+                box=box
+            )
+        
+        db_embeddings = db.get_all_embeddings()
+        if not db_embeddings:
+            add_step("recognizing", "failed", "Database empty")
+            return FASCheckinResponse(
+                success=False,
+                message="Database empty",
+                steps=steps,
+                current_step="recognizing",
+                fas_score=fas_score,
+                box=box
+            )
+        
+        match = recognizer.recognize(embedding, db_embeddings, threshold=config.FR_THRESHOLD)
+        
+        if match and match['is_match']:
+            user_id = match['user_id']
+            similarity = match['similarity']
+            
+            # Check expected user id if provided
+            if expected_user_id and user_id != expected_user_id:
+                add_step("recognizing", "failed", f"User mismatch (Not {expected_user_id})")
+                return FASCheckinResponse(
+                    success=False,
+                    message="User mismatch",
+                    steps=steps,
+                    current_step="recognizing",
+                    fas_score=fas_score,
+                    similarity=similarity,
+                    box=box
+                )
+            
+            # Get user info
+            user_info = db.get_face(user_id)
+            name = user_info['name'] if user_info else "Unknown"
+            
+            # Combined confidence (simple mean for now)
+            confidence = (fas_score + similarity) / 2
+            
+            # Success! Log it
+            logger = get_checkin_logger()
+            logger.log_checkin(
+                user_id=user_id,
+                camera_id="api_fas",
+                confidence=confidence,
+                fas_score=fas_score,
+                similarity=similarity,
+                evidence_frame=image # Save the full image as evidence
+            )
+            
+            add_step("recognizing", "success", f"Recognized as {name}", score=similarity)
+            
+            return FASCheckinResponse(
+                success=True,
+                message="Check-in successful",
+                steps=steps,
+                current_step="complete",
+                user_id=user_id,
+                name=name,
+                fas_score=fas_score,
+                similarity=similarity,
+                confidence=confidence,
+                is_recognized=True,
+                box=box
+            )
+        else:
+            add_step("recognizing", "failed", "Person unknown")
+            return FASCheckinResponse(
+                success=False,
+                message="Person not recognized",
+                steps=steps,
+                current_step="recognizing",
+                fas_score=fas_score,
+                box=box
+            )
+            
+    except Exception as e:
+        add_step("recognizing", "error", f"Recognition error: {str(e)}")
+        return FASCheckinResponse(
+            success=False,
+            message="Recognition failed",
+            steps=steps,
+            current_step="recognizing",
+            fas_score=fas_score,
+            box=box
+        )
+
+
 
 
 @router.post("/update_face", response_model=UpdateFaceResponse)

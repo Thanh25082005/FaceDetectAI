@@ -159,3 +159,41 @@ class RegisterRequest(BaseModel):
     dob: str
 
 
+# ==================== FAS Check-in Models ====================
+
+class FASCheckinStep(BaseModel):
+    """Step details for FAS check-in"""
+    step_name: str = Field(..., description="Step name: detecting, anti_spoofing, recognizing")
+    status: str = Field(..., description="Status: success, failed, skipped")
+    message: str = Field(..., description="Human-readable message")
+    score: Optional[float] = Field(None, description="Score for this step")
+
+
+class FASCheckinResponse(BaseModel):
+    """Response for FAS check-in endpoint with step details"""
+    success: bool
+    message: str
+    
+    # Step details
+    steps: List[FASCheckinStep] = Field(default_factory=list, description="Steps executed")
+    current_step: str = Field("complete", description="Current/final step")
+    
+    # Results
+    user_id: Optional[str] = None
+    name: Optional[str] = None
+    
+    # Scores
+    fas_score: Optional[float] = Field(None, description="Anti-spoofing score (0-1, higher=real)")
+    similarity: Optional[float] = Field(None, description="Face recognition similarity")
+    confidence: Optional[float] = Field(None, description="Combined confidence score")
+    
+    # Flags
+    is_spoof: bool = Field(False, description="True if spoof detected")
+    is_recognized: bool = Field(False, description="True if face was recognized")
+    
+    # Additional info
+    box: Optional[List[int]] = Field(None, description="Face bounding box [x,y,w,h]")
+    timestamp: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+

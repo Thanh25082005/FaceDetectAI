@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Webcam from 'react-webcam'
 import axios from 'axios'
-import { MapPin, CheckCircle, AlertTriangle, Loader2, LogOut, Camera, RefreshCcw } from 'lucide-react'
+import { MapPin, CheckCircle, AlertTriangle, Loader2, LogOut, Camera, RefreshCcw, Shield } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -245,12 +245,22 @@ export default function Dashboard() {
 
                 {/* Live Mode Shortcut */}
                 {!isScanning && (
-                    <button
-                        onClick={() => navigate('/live')}
-                        className="w-full mt-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                    >
-                        ⚡ Chế độ Live Stream
-                    </button>
+                    <div className="flex flex-col gap-3 mt-4">
+                        <button
+                            onClick={() => navigate('/secure')}
+                            className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl flex items-center justify-center gap-2 border border-blue-500/30 shadow-lg shadow-blue-500/10 transition-all active:scale-95"
+                        >
+                            <Shield className="text-blue-400" size={20} />
+                            🛡️ Chấm công BẢO MẬT CAO
+                        </button>
+
+                        <button
+                            onClick={() => navigate('/live')}
+                            className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                        >
+                            ⚡ Chế độ Live Stream
+                        </button>
+                    </div>
                 )}
 
                 {scanResult.status === 'success' && (

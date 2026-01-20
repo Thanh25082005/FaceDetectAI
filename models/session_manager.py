@@ -15,9 +15,13 @@ import sys
 sys.path.append('..')
 from config import (
     DECISION_CONFIDENCE_THRESHOLD,
-    FR_SIMILARITY_THRESHOLD,
+    FR_THRESHOLD,
     FAS_ACCEPT_THRESHOLD,
     FAS_REJECT_THRESHOLD,
+    FAS_ENABLE,
+    FUSION_WEIGHT_FR,
+    FUSION_WEIGHT_FAS,
+    FUSION_WEIGHT_QUALITY,
     SESSION_TIMEOUT_SECONDS
 )
 
@@ -25,6 +29,7 @@ from models.tracker import FaceTrack, TrackState
 from models.face_recognizer import EmbeddingAggregator, get_face_recognizer
 from models.quality_filter import QualityFilter, get_quality_filter
 from models.database import get_face_database
+from models.anti_spoofing import FASAggregator, get_fas_predictor
 
 
 class CheckinDecision(Enum):
@@ -49,6 +54,7 @@ class TrackSession:
     
     # Accumulators
     embedding_aggregator: EmbeddingAggregator = field(default_factory=EmbeddingAggregator)
+    fas_aggregator: FASAggregator = field(default_factory=FASAggregator)
     
     # Quality tracking
     quality_scores: List[float] = field(default_factory=list)
@@ -102,9 +108,8 @@ class TrackSession:
             'frames_processed': self.frames_processed,
             'quality_frames_count': self.quality_frames_count,
             'average_quality': self.get_average_quality(),
-            'average_quality': self.get_average_quality(),
             'embedding_info': self.embedding_aggregator.to_dict(),
-
+            'fas_info': self.fas_aggregator.to_dict(),
             'created_at': self.created_at,
             'session_duration': time.time() - self.created_at
         }
@@ -133,9 +138,19 @@ class SessionManager:
         
         # Get model instances
         self.recognizer = get_face_recognizer(device=device)
-
         self.quality_filter = get_quality_filter()
         self.database = get_face_database()
+        
+        # Initialize FAS if enabled
+        self.fas_enabled = FAS_ENABLE
+        if self.fas_enabled:
+            try:
+                self.fas_predictor = get_fas_predictor(device=device)
+                print("✅ FAS enabled in SessionManager")
+            except Exception as e:
+                print(f"⚠️ FAS initialization failed: {e}")
+                print("   Continuing without FAS...")
+                self.fas_enabled = False
     
     def get_or_create_session(self, track_id: str) -> TrackSession:
         """Get existing session or create new one"""
@@ -188,7 +203,16 @@ class SessionManager:
         session.quality_frames_count += 1
         session.update_best_frame(face_image, quality.overall_score)
         
-        # 2. FAS check REMOVED
+        # 2. FAS check
+        if self.fas_enabled:
+            fas_result = self.fas_predictor.predict(face_image)
+            session.fas_aggregator.add_score(fas_result['score'])
+            
+            # Early reject if clearly fake
+            if session.fas_aggregator.should_early_reject():
+                session.decision = CheckinDecision.REJECTED_SPOOF
+                session.decision_confidence = 1.0 - session.fas_aggregator.get_aggregated_score()
+                return session
         
         # 3. FR embedding extraction
 
@@ -224,7 +248,7 @@ class SessionManager:
         result = self.recognizer.recognize(
             aggregated,
             db_embeddings,
-            threshold=FR_SIMILARITY_THRESHOLD
+            threshold=FR_THRESHOLD
         )
         
         if result:
@@ -245,11 +269,26 @@ class SessionManager:
         
         # Check FR result
         if session.matched_user_id:
-            # Fuse scores: 90% FR similarity + 10% Quality
-            combined_confidence = (
-                0.9 * session.match_similarity +
-                0.1 * session.get_average_quality()
-            )
+            # Fuse scores: FR + FAS + Quality
+            if self.fas_enabled and session.fas_aggregator.can_decide():
+                # Full fusion with FAS
+                combined_confidence = (
+                    FUSION_WEIGHT_FR * session.match_similarity +
+                    FUSION_WEIGHT_FAS * session.fas_aggregator.get_aggregated_score() +
+                    FUSION_WEIGHT_QUALITY * session.get_average_quality()
+                )
+                
+                # FAS gate: reject if spoof detected
+                if session.fas_aggregator.is_likely_spoof():
+                    session.decision = CheckinDecision.REJECTED_SPOOF
+                    session.decision_confidence = 1.0 - session.fas_aggregator.get_aggregated_score()
+                    return
+            else:
+                # Fallback: FR + Quality only (original formula)
+                combined_confidence = (
+                    0.9 * session.match_similarity +
+                    0.1 * session.get_average_quality()
+                )
             
             if combined_confidence >= DECISION_CONFIDENCE_THRESHOLD:
                 session.decision = CheckinDecision.ACCEPTED

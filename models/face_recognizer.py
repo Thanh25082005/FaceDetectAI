@@ -13,7 +13,7 @@ except ImportError:
 from scipy.spatial.distance import cosine
 import sys
 sys.path.append('..')
-from config import FACE_RECOGNITION_THRESHOLD, FACE_SIZE, FR_EMA_ALPHA, FR_MIN_FRAMES
+from config import FR_THRESHOLD, FACE_SIZE, FR_EMA_ALPHA, FR_MIN_FRAMES
 
 
 class EmbeddingAggregator:
@@ -307,7 +307,7 @@ class FaceRecognizer:
             Best match dict with 'user_id', 'similarity', 'is_match' or None if no matches
         """
         if threshold is None:
-            threshold = FACE_RECOGNITION_THRESHOLD
+            threshold = FR_THRESHOLD
         
         if not database_embeddings:
             return None
@@ -350,7 +350,7 @@ class FaceRecognizer:
             Dictionary with 'similarity' and 'is_match'
         """
         if threshold is None:
-            threshold = FACE_RECOGNITION_THRESHOLD
+            threshold = FR_THRESHOLD
         
         similarity = self.compute_similarity(embedding1, embedding2)
         

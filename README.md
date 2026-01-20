@@ -1,117 +1,136 @@
-# 📸 Face Auth & Check-in System (Lite Version)
+# 🛡️ Face Auth & Secure Check-in System (Advanced FAS Edition)
 
-Hệ thống điểm danh, chấm công trực tuyến tối ưu hóa cho tốc độ và hiệu năng, sử dụng công nghệ Nhận diện khuôn mặt (Face Recognition).
-Dự án được xây dựng theo mô hình Full-Stack hiện đại với **ReactJS** (Frontend) và **FastAPI** (Backend).
-
-> **Lưu ý:** Phiên bản này tập trung vào tốc độ nhận diện nhanh, đã loại bỏ các module kiểm tra giả mạo (Anti-Spoofing) phức tạp để tối ưu độ trễ.
+A modern face recognition and authentication system integrated with **Face Anti-Spoofing (FAS)** technology to ensure maximum security and accuracy. This project provides a complete Full-stack solution, from an AI-powered Backend to an intuitive Frontend Dashboard.
 
 ---
 
-## 🚀 Tính năng nổi bật
+## 🚀 Key Features
 
-*   **Xác thực khuôn mặt (Face Authentication):** Nhận diện chính xác nhân viên qua khuôn mặt sử dụng InsightFace/ArcFace.
-*   **Chấm công Live Stream:** Chế độ quét thời gian thực qua WebSockets (10-15 FPS), mang lại trải nghiệm mượt mà không độ trễ.
-*   **Quản lý Người dùng:**
-    *   Đăng ký kèm lấy mẫu khuôn mặt (Face Enrollment).
-    *   Cập nhật thông tin và dữ liệu khuôn mặt.
-    *   Đăng nhập hệ thống bảo mật.
-*   **Giao diện Hiện đại:** Dashboard trực quan, hỗ trợ Mobile/Desktop, vẽ khung nhận diện (Bounding Box) thời gian thực.
-*   **Lịch sử Chấm công:** Lưu trữ log điểm danh chi tiết, bao gồm hình ảnh bằng chứng (Evidence).
-
----
-
-## 🛠️ Công nghệ sử dụng
-
-### Backend (Python)
-*   **FastAPI:** Framework API hiệu năng cao, hỗ trợ tốt Async/Await.
-*   **WebSockets:** Truyền tải video stream thời gian thực.
-*   **OpenCV & InsightFace:** Core xử lý ảnh và trích xuất đặc trưng khuôn mặt.
-*   **SQLite:** Cơ sở dữ liệu nhẹ, không cần cài đặt server DB phức tạp.
-
-### Frontend (JavaScript)
-*   **ReactJS (Vite):** Tốc độ khởi động nhanh, trải nghiệm SPA (Single Page App).
-*   **TailwindCSS:** Mọi style đều được viết bằng utility classes tiện lợi.
-*   **Axios:** Giao tiếp HTTP API.
+*   **🛡️ Face Anti-Spoofing (FAS):** Integrated with **Silent-Face-Anti-Spoofing** (MiniFASNet). Detects and rejects spoofing attempts using photos, videos, or masks in real-time.
+*   **👤 Accurate Face Recognition:** Powered by **InsightFace (ArcFace)** with the `buffalo_l` model, ensuring high precision even in varying lighting conditions.
+*   **⚡ Live Stream Processing:** Processes video streams via **WebSockets**, supporting real-time bounding box overlays and user information display with ultra-low latency.
+*   **🔐 Auth & User Management:**
+    *   **Enrollment:** Secure registration for new users with face sample collection (requires liveness check).
+    *   **Secure Check-in:** A dedicated check-in mode that performs simultaneous face recognition and liveness detection.
+*   **📊 Dashboard & History:** Logs all check-in events with image evidence stored in the `data/evidence` directory.
 
 ---
 
-## ⚙️ Cài đặt & Chạy dự án
+## 🏗️ System Architecture
 
-### 1. Yêu cầu hệ thống
-*   **Python:** 3.8 trở lên.
-*   **Node.js:** 16 trở lên (Recommended: v18+).
-*   **GPU (Optional):** NVIDIA GPU + CUDA để đạt tốc độ nhận diện <50ms (Nếu không có sẽ chạy CPU vẫn ổn định).
+```mermaid
+graph TD
+    A[Frontend React] <-->|WebSockets / REST| B[FastAPI Backend]
+    B --> C[Face Detector MTCNN/InsightFace]
+    C --> D[FAS Module Silent-FAS]
+    D --> E[Feature Extractor ArcFace]
+    E --> F[Recognition Cosine Similarity]
+    F --> G[(SQLite Database)]
+```
 
-### 2. Cài đặt Backend
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+| :--- | :--- |
+| **Backend** | FastAPI, Python 3.10+, Uvicorn |
+| **AI Models** | InsightFace, OpenCV, ONNX Runtime, Silent-FAS |
+| **Database** | SQLite, aiosqlite (Async wrapper) |
+| **Frontend** | ReactJS, Vite, TailwindCSS, Lucide Icons |
+| **Communication** | REST API, WebSockets |
+
+---
+
+## ⚙️ Installation & Setup
+
+### 1. System Requirements
+*   **OS:** Linux (Ubuntu recommended) / Windows / macOS.
+*   **Python:** 3.8 - 3.12.
+*   **Node.js:** v18+.
+*   **Hardware:** Minimum 4GB RAM. NVIDIA GPU (CUDA) recommended for optimal performance.
+
+### 2. Backend Setup
 ```bash
-# Di chuyển vào thư mục gốc dự án
-cd /path/to/detection-face
+git clone <repository_url>
+cd detection-face
 
-# Tạo môi trường ảo (khuyên dùng)
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # venv\Scripts\activate   # Windows
 
-# Cài đặt thư viện
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 3. Cài đặt Frontend
+### 3. Frontend Setup
 ```bash
-# Di chuyển vào thư mục frontend
 cd frontend
-
-# Cài đặt gói npm
 npm install
 ```
 
----
+### 4. Running the Services
+Start both Backend and Frontend servers simultaneously:
 
-## ▶️ Hướng dẫn Chạy (Run)
-
-Bạn cần mở **2 Terminal** riêng biệt để chạy song song Backend và Frontend.
-
-**Terminal 1: Chạy Backend (API Server)**
+**Terminal 1 (Backend):**
 ```bash
-cd /path/to/detection-face
 source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-*Backend sẽ chạy tại: `http://localhost:8000`*
 
-**Terminal 2: Chạy Frontend (Giao diện)**
+**Terminal 2 (Frontend):**
 ```bash
-cd /path/to/detection-face/frontend
-npm run dev
+cd frontend
+npm run dev -- --port 3000
 ```
-*Frontend sẽ chạy tại: `http://localhost:3000`*
 
 ---
 
-## 📖 Hướng dẫn Sử dụng nhanh
+## 📡 Key API Endpoints
 
-1.  **Truy cập:** Mở trình duyệt vào `http://localhost:3000`.
-2.  **Đăng ký Mới:** Chọn "Đăng ký", điền thông tin và thực hiện quét khuôn mặt lần đầu (giữ khuôn mặt trong khung xanh).
-3.  **Đăng nhập:** Dùng User/Pass vừa tạo.
-4.  **Chấm công:**
-    *   Tại màn hình chính, nhấn nút **"⚡ Chế độ Live Stream"**.
-    *   Hệ thống sẽ bật Camera và tự động nhận diện.
-    *   Khi hiện thông báo **"Thành công"** (Khung xanh lá), bạn đã chấm công xong!
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/v1/auth/register` | Register new user + Face enrollment |
+| `POST` | `/api/v1/auth/login` | System authentication |
+| `POST` | `/api/v1/checkin_fas` | Secure check-in (Recognition + FAS) |
+| `GET` | `/api/v1/history` | Fetch check-in history |
+| `GET` | `/docs` | Interactive Swagger UI documentation |
 
 ---
 
-## 📂 Cấu trúc thư mục
+## 🔧 Advanced Configuration (`config.py`)
 
-```
+Customize system behavior in `config.py`:
+*   `RECOGNITION_THRESHOLD`: Recognition sensitivity (default `0.5`).
+*   `FAS_THRESHOLD`: Anti-spoofing threshold (default `0.9`).
+*   `DEVICE`: Toggle between `cpu` and `cuda`.
+
+---
+
+## ❓ Troubleshooting
+
+> [!IMPORTANT]
+> **Camera Issues:** Ensure the browser has camera permissions and no other application is currently using the camera.
+
+> [!TIP]
+> **Performance:** If running on CPU, consider reducing frame size or using lite models located in the `models/` directory.
+
+> [!WARNING]
+> **FAS Rejections:** If real faces are frequently rejected, check lighting conditions (avoid backlighting) and ensure the user is 40-60cm away from the camera.
+
+---
+
+## 📂 Directory Structure
+
+```text
 /detection-face
-├── api/                # Các API Endpoints (Auth, Checkin, Face CRUD)
-├── models/             # Core Logic (Detector, Recognizer, Session Manager)
-├── streaming/          # Xử lý luồng Video WebSocket
-├── database/           # SQLite (faces.db, checkins.db)
-├── frontend/           # Source code ReactJS
-│   ├── src/
-│   │   ├── components/ # Các thành phần UI (LiveCamera, Dashboard...)
-│   │   └── ...
-├── main.py             # File khởi chạy chính
-└── config.py           # Cấu hình hệ thống (Device, Threshold, Paths...)
+├── api/                # Endpoints, Schemas, and Business Logic
+├── models/             # Core AI (Detector, Recognizer, FAS Module)
+├── streaming/          # WebSocket Stream Processor
+├── data/               # Persistent Storage (DB and Evidence images)
+├── frontend/           # React Frontend Source Code
+├── libs/               # Supporting Libraries & AI Models
+├── main.py             # API Entry Point
+└── config.py           # System Configuration & Thresholds
 ```

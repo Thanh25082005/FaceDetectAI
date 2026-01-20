@@ -8,6 +8,8 @@ backup_demos_*/
 greedyFAS_pipeline/outputs/
 greedyFAS_pipeline/inputs/
 backup_demos_20260120_042113/
+greedyFAS_pipeline/
+libs/
 
 # Python / Backend
 __pycache__/

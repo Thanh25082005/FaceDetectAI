@@ -5,6 +5,7 @@ import Register from './Register';
 import Dashboard from './Dashboard';
 
 import LiveCheckin from './LiveCheckin';
+import SecureCheckin from './SecureCheckin';
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -22,6 +23,11 @@ export default function App() {
                     <Route path="/live" element={
                         <ProtectedRoute>
                             <LiveCheckin />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/secure" element={
+                        <ProtectedRoute>
+                            <SecureCheckin />
                         </ProtectedRoute>
                     } />
                     <Route path="/" element={
