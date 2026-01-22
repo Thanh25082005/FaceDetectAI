@@ -55,8 +55,8 @@ async def health_check():
         recognizer_available = False
     
     try:
-        anti_spoof = get_anti_spoofing()
-        anti_spoof_available = True  # Always available now (no mediapipe dependency)
+        anti_spoof = get_fas_predictor()
+        anti_spoof_available = True
     except Exception:
         anti_spoof_available = False
     
@@ -391,7 +391,31 @@ async def mobile_checkin(
     aligned_face, detection = aligned_result
     box = detection['box']
     
-    # Extract embedding
+    # --- Step 3: Anti-Spoofing Check (FAS) ---
+    fas_predictor = get_fas_predictor()
+    try:
+        fas_result = fas_predictor.predict(image)
+        fas_score = fas_result['score']
+        is_real = fas_result['is_real'] and fas_score >= config.FAS_ACCEPT_THRESHOLD
+        
+        if not is_real:
+            return MobileCheckinResponse(
+                success=False,
+                message=f"Spoof detected (Score: {fas_score:.4f}). Please use a real face.",
+                distance_meters=dist,
+                box=box,
+                timestamp=timestamp
+            )
+    except Exception as e:
+        return MobileCheckinResponse(
+            success=False,
+            message=f"Anti-spoofing check failed: {str(e)}",
+            distance_meters=dist,
+            box=box,
+            timestamp=timestamp
+        )
+    
+    # --- Step 4: Extract embedding ---
     embedding = recognizer.get_embedding_direct(aligned_face)
 
     if embedding is None:
@@ -464,10 +488,9 @@ async def mobile_checkin(
          logger = get_checkin_logger()
          logger.log_checkin(
             user_id=match['user_id'],
-            name=name,
-            camera_id="mobile_app", # Or a specific mobile device ID if available
-            location={'latitude': latitude, 'longitude': longitude},
-            checkin_type="mobile"
+            camera_id="mobile_app",
+            similarity=match['similarity'],
+            metadata={'name': name, 'location': {'latitude': latitude, 'longitude': longitude}, 'checkin_type': 'mobile'}
          )
 
          return MobileCheckinResponse(
