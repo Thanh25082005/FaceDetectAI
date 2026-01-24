@@ -1,0 +1,76 @@
+# ============================================================
+# Dockerfile for Face Recognition Mobile API
+# Includes: FastAPI app, FAS models, InsightFace, SQL Server connection
+# ============================================================
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # OpenCV dependencies
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    # Build tools for some Python packages
+    gcc \
+    g++ \
+    python3-dev \
+    # ODBC for SQL Server
+    curl \
+    gnupg2 \
+    unixodbc \
+    unixodbc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Microsoft ODBC Driver 18 for SQL Server
+RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements_mobile.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements_mobile.txt
+
+# Copy application code
+COPY main_mobile.py .
+COPY config.py .
+COPY api/ ./api/
+COPY models/ ./models/
+COPY utils/ ./utils/
+COPY libs/ ./libs/
+COPY streaming/ ./streaming/
+COPY services/ ./services/
+COPY database/ ./database/
+
+# Create directories for data
+RUN mkdir -p /app/data /app/evidence
+
+# Pre-download InsightFace models (buffalo_l)
+# This will be done on first run if needed, but we can cache it
+RUN python -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider']); app.prepare(ctx_id=0)" || true
+
+# Expose the API port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Run the application
+CMD ["uvicorn", "main_mobile:app", "--host", "0.0.0.0", "--port", "8000"]

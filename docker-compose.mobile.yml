@@ -1,0 +1,102 @@
+# ============================================================
+# Docker Compose for Face Recognition Mobile API
+# Services: FastAPI app + SQL Server 2022
+# ============================================================
+
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: face_check_sqlserver
+    hostname: sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong@Passw0rd"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    # Simple healthcheck - just check if SQL Server process is running
+    healthcheck:
+      test: [ "CMD-SHELL", "pgrep -x sqlservr > /dev/null || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+    restart: unless-stopped
+
+  # Initialize Database (runs once after SQL Server is healthy)
+  db-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    command: >
+      /bin/bash -c "
+        echo 'Waiting for SQL Server to be ready...';
+        sleep 15;
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourStrong@Passw0rd' -Q \"
+          IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'FaceCheckDB')
+          BEGIN
+            CREATE DATABASE FaceCheckDB;
+            PRINT 'Database FaceCheckDB created';
+          END;
+        \";
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourStrong@Passw0rd' -d FaceCheckDB -Q \"
+          IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'faces')
+          BEGIN
+            CREATE TABLE faces (
+              id INT IDENTITY(1,1) PRIMARY KEY,
+              user_id NVARCHAR(50) UNIQUE NOT NULL,
+              name_user NVARCHAR(100),
+              image VARBINARY(MAX),
+              embedding VARBINARY(MAX),
+              created_at DATETIME2 DEFAULT GETDATE()
+            );
+            PRINT 'Table faces created';
+          END;
+        \";
+        echo 'Database initialization complete!'
+      "
+    restart: "no"
+
+  # Face Recognition Mobile API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mobile
+    container_name: face_check_api
+    hostname: api
+    environment:
+      MSSQL_HOST: sqlserver
+      MSSQL_PORT: "1433"
+      MSSQL_USER: sa
+      MSSQL_PASSWORD: "YourStrong@Passw0rd"
+      MSSQL_DATABASE: FaceCheckDB
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./evidence:/app/evidence
+      - insightface_models:/root/.insightface
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+    name: face_check_sqlserver_data
+  insightface_models:
+    name: face_check_insightface_models

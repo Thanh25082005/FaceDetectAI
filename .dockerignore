@@ -1,0 +1,72 @@
+# ============================================================
+# Docker Ignore for Mobile API Build
+# ============================================================
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test files
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Data files (will be mounted as volumes)
+data/
+evidence/
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# Docker files for other builds
+Dockerfile
+docker-compose.yml
+!Dockerfile.mobile
+!docker-compose.mobile.yml
+
+# Other main files
+main.py
+
+# Artifacts directory
+.gemini/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
