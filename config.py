@@ -65,6 +65,13 @@ FUSION_WEIGHT_QUALITY = 0.1
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
+# === SQL Server Settings ===
+MSSQL_HOST = os.getenv("MSSQL_HOST", "localhost")
+MSSQL_PORT = int(os.getenv("MSSQL_PORT", "1433"))
+MSSQL_USER = os.getenv("MSSQL_USER", "sa")
+MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "YourStrong@Passw0rd")
+MSSQL_DATABASE = os.getenv("MSSQL_DATABASE", "FaceCheckDB")
+
 # === Geolocation Settings ===
 _dynamic_config = load_dynamic_config()
 COMPANY_LOCATION = tuple(_dynamic_config.get("COMPANY_LOCATION", [21.0285, 105.8542]))  # (Latitude, Longitude)

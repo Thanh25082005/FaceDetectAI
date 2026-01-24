@@ -1,161 +1,106 @@
-import sqlite3
-import json
+"""
+SQL Server Database for Face Recognition System
+
+Uses SQL Server for face embeddings storage.
+Embeddings stored as VARBINARY (binary format).
+"""
+
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
 import numpy as np
-from pathlib import Path
+import pyodbc
 
 import sys
 sys.path.append('..')
-from config import DATABASE_PATH
+from config import MSSQL_HOST, MSSQL_PORT, MSSQL_USER, MSSQL_PASSWORD, MSSQL_DATABASE
+
+
+def get_connection_string() -> str:
+    """Get ODBC connection string for SQL Server."""
+    return (
+        f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+        f"SERVER={MSSQL_HOST},{MSSQL_PORT};"
+        f"DATABASE={MSSQL_DATABASE};"
+        f"UID={MSSQL_USER};"
+        f"PWD={MSSQL_PASSWORD};"
+        f"TrustServerCertificate=yes;"
+        f"Connection Timeout=30"
+    )
+
+
+def numpy_to_bytes(array) -> bytes:
+    """Convert numpy array or list to bytes for VARBINARY storage."""
+    if isinstance(array, list):
+        array = np.array(array, dtype=np.float32)
+    elif not isinstance(array, np.ndarray):
+        array = np.array(array, dtype=np.float32)
+    return array.astype(np.float32).tobytes()
+
+
+def bytes_to_numpy(data: bytes) -> Optional[np.ndarray]:
+    """Convert bytes from VARBINARY back to numpy array."""
+    if data is None:
+        return None
+    return np.frombuffer(data, dtype=np.float32)
 
 
 class FaceDatabase:
     """
-    SQLite database for storing face embeddings and user account data.
+    SQL Server database for storing face embeddings.
+    Embeddings stored as VARBINARY(MAX) for efficient storage.
     """
     
-    def __init__(self, db_path: str = None):
-        """
-        Initialize database connection
-        
-        Args:
-            db_path: Path to SQLite database file
-        """
-        if db_path is None:
-            db_path = str(DATABASE_PATH)
-        
-        self.db_path = db_path
-        
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        
-        # Initialize database tables
-        self._init_db()
+    def __init__(self):
+        """Initialize database connection."""
+        self._conn_str = get_connection_string()
+        print("✅ SQL Server FaceDatabase initialized")
     
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get database connection with row factory enabled."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-    
-    def _init_db(self):
-        """
-        Initialize database tables. 
-        Creates 'faces' for embeddings and 'users' for account metadata.
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        # 1. FACES TABLE (Embeddings)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS faces (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE NOT NULL,
-                name TEXT,
-                embedding TEXT NOT NULL,
-                metadata TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # 2. USERS TABLE (Accounts)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT,
-                dob TEXT,
-                face_user_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(face_user_id) REFERENCES faces(user_id)
-            )
-        """)
-        
-        # 3. INDICES
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_id ON faces(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_username ON users(username)")
-        
-        conn.commit()
-        conn.close()
+    def _get_connection(self) -> pyodbc.Connection:
+        """Get database connection."""
+        return pyodbc.connect(self._conn_str)
 
     # =========================================================================
-    # User Authentication Methods
+    # User Authentication Methods (stubs for compatibility)
     # =========================================================================
     
     def create_user(self, username, password_hash, full_name, dob, face_user_id) -> Dict:
-        """Create a new user account linked to a face_user_id"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                INSERT INTO users (username, password_hash, full_name, dob, face_user_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (username, password_hash, full_name, dob, face_user_id))
-            
-            conn.commit()
-            return {'success': True, 'message': 'User created successfully', 'username': username}
-        except sqlite3.IntegrityError:
-            return {'success': False, 'message': 'Username already exists'}
-        except sqlite3.OperationalError as e:
-            # Handle case where table might be missing (e.g. after raw file deletion)
-            if "no such table: users" in str(e):
-                self._init_db()
-                return self.create_user(username, password_hash, full_name, dob, face_user_id)
-            raise e
-        finally:
-            conn.close()
+        return {'success': False, 'message': 'User management not implemented'}
 
     def get_user_by_username(self, username) -> Optional[Dict]:
-        """Get user details by username"""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-        except sqlite3.OperationalError as e:
-            if "no such table: users" in str(e):
-                self._init_db()
-                return self.get_user_by_username(username)
-            raise e
-        finally:
-            conn.close()
         return None
 
     # =========================================================================
     # Face Management Methods
     # =========================================================================
 
-    def add_face(self, user_id: str, embedding: np.ndarray, name: str = None, metadata: Dict = None) -> Dict:
+    def add_face(self, user_id: str, embedding, name: str = None, metadata: Dict = None) -> Dict:
         """Add a new face embedding to the database"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
-            embedding_json = json.dumps(embedding.tolist() if isinstance(embedding, np.ndarray) else embedding)
-            metadata_json = json.dumps(metadata) if metadata else None
+            # Convert embedding to bytes for VARBINARY column
+            embedding_bytes = numpy_to_bytes(embedding)
             
             cursor.execute("""
-                INSERT INTO faces (user_id, name, embedding, metadata)
-                VALUES (?, ?, ?, ?)
-            """, (user_id, name, embedding_json, metadata_json))
+                INSERT INTO faces (user_id, name_user, embedding)
+                VALUES (?, ?, ?)
+            """, (user_id, name, embedding_bytes))
+            
+            # Get the inserted ID
+            cursor.execute("SELECT SCOPE_IDENTITY()")
+            row = cursor.fetchone()
+            last_id = int(row[0]) if row and row[0] else None
             
             conn.commit()
-            return {'success': True, 'message': f'Face added for user {user_id}', 'id': cursor.lastrowid}
-        except sqlite3.IntegrityError:
+            print(f"✅ Face added: user_id={user_id}, id={last_id}")
+            return {'success': True, 'message': f'Face added for user {user_id}', 'id': last_id}
+        except pyodbc.IntegrityError:
             return {'success': False, 'message': f'Face entry for {user_id} already exists'}
-        except sqlite3.OperationalError as e:
-            if "no such table: faces" in str(e):
-                self._init_db()
-                return self.add_face(user_id, embedding, name, metadata)
-            raise e
+        except Exception as e:
+            print(f"❌ Error adding face: {e}")
+            return {'success': False, 'message': str(e)}
         finally:
             conn.close()
 
@@ -165,25 +110,26 @@ class FaceDatabase:
         cursor = conn.cursor()
         
         try:
-            cursor.execute("SELECT * FROM faces WHERE user_id = ?", (user_id,))
+            cursor.execute("SELECT id, user_id, name_user, embedding, created_at FROM faces WHERE user_id = ?", (user_id,))
             row = cursor.fetchone()
             if row:
+                embedding_array = bytes_to_numpy(row[3])
+                created = str(row[4]) if row[4] else datetime.now().isoformat()
                 return {
-                    'id': row['id'],
-                    'user_id': row['user_id'],
-                    'name': row['name'],
-                    'embedding': json.loads(row['embedding']),
-                    'metadata': json.loads(row['metadata']) if row['metadata'] else None,
-                    'created_at': row['created_at'],
-                    'updated_at': row['updated_at']
+                    'id': row[0],
+                    'user_id': row[1],
+                    'name': row[2],
+                    'embedding': embedding_array.tolist() if embedding_array is not None else None,
+                    'created_at': created,
+                    'updated_at': created  # Use same as created for compatibility
                 }
-        except sqlite3.OperationalError:
-            self._init_db()
+        except Exception as e:
+            print(f"Error getting face: {e}")
         finally:
             conn.close()
         return None
 
-    def update_face(self, user_id: str, embedding: np.ndarray = None, name: str = None, metadata: Dict = None) -> Dict:
+    def update_face(self, user_id: str, embedding = None, name: str = None, metadata: Dict = None) -> Dict:
         """Update face data for a user"""
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -194,18 +140,14 @@ class FaceDatabase:
             
             if embedding is not None:
                 updates.append("embedding = ?")
-                params.append(json.dumps(embedding.tolist() if isinstance(embedding, np.ndarray) else embedding))
+                params.append(numpy_to_bytes(embedding))
             if name is not None:
-                updates.append("name = ?")
+                updates.append("name_user = ?")
                 params.append(name)
-            if metadata is not None:
-                updates.append("metadata = ?")
-                params.append(json.dumps(metadata))
             
             if not updates:
                 return {'success': False, 'message': 'No updates provided'}
             
-            updates.append("updated_at = CURRENT_TIMESTAMP")
             params.append(user_id)
             
             query = f"UPDATE faces SET {', '.join(updates)} WHERE user_id = ?"
@@ -216,6 +158,8 @@ class FaceDatabase:
                 return {'success': False, 'message': f'User {user_id} not found'}
             
             return {'success': True, 'message': f'Face updated for user {user_id}'}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
         finally:
             conn.close()
 
@@ -238,15 +182,16 @@ class FaceDatabase:
         cursor = conn.cursor()
         results = []
         try:
-            cursor.execute("SELECT user_id, name, embedding FROM faces")
+            cursor.execute("SELECT user_id, name_user, embedding FROM faces")
             for row in cursor.fetchall():
+                embedding_array = bytes_to_numpy(row[2])
                 results.append({
-                    'user_id': row['user_id'],
-                    'name': row['name'],
-                    'embedding': json.loads(row['embedding'])
+                    'user_id': row[0],
+                    'name': row[1],
+                    'embedding': embedding_array.tolist() if embedding_array is not None else None
                 })
-        except sqlite3.OperationalError:
-            self._init_db()
+        except Exception as e:
+            print(f"Error getting embeddings: {e}")
         finally:
             conn.close()
         return results
@@ -259,8 +204,8 @@ class FaceDatabase:
         try:
             cursor.execute("SELECT COUNT(*) FROM faces")
             count = cursor.fetchone()[0]
-        except sqlite3.OperationalError:
-            self._init_db()
+        except Exception as e:
+            print(f"Error counting users: {e}")
         finally:
             conn.close()
         return count
@@ -271,17 +216,24 @@ class FaceDatabase:
         cursor = conn.cursor()
         results = []
         try:
-            cursor.execute("SELECT user_id, name, created_at, updated_at FROM faces WHERE name LIKE ?", (f"%{name_query}%",))
+            cursor.execute(
+                "SELECT user_id, name_user, created_at FROM faces WHERE name_user LIKE ?", 
+                (f"%{name_query}%",)
+            )
             for row in cursor.fetchall():
-                results.append(dict(row))
-        except sqlite3.OperationalError:
-            self._init_db()
+                results.append({
+                    'user_id': row[0],
+                    'name': row[1],
+                    'created_at': str(row[2]) if row[2] else None
+                })
+        except Exception as e:
+            print(f"Error searching: {e}")
         finally:
             conn.close()
         return results
 
 
-# Singleton instance for reuse
+# Singleton instance
 _database_instance: Optional[FaceDatabase] = None
 
 
