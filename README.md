@@ -242,7 +242,7 @@ Cập nhật cấu hình vị trí công ty và khoảng cách check-in.
 
 ```bash
 # Clone và tạo môi trường
-git clone <repository_url>
+git clone https://github.com/Thanh25082005/FaceDetectAI.git
 cd FaceDetectAI
 python3 -m venv venv
 source venv/bin/activate
