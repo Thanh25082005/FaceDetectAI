@@ -95,11 +95,13 @@ FaceDetectAI/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/v1/health` | Health Check |
-| `POST` | `/api/v1/add_face` | Add Face |
-| `GET` | `/api/v1/get_face/{user_id}` | Get Face |
-| `DELETE` | `/api/v1/delete_face/{user_id}` | Delete Face |
-| `POST` | `/api/v1/mobile_checkin` | Mobile Checkin |
+| `POST` | `/api/v1/add_face` | Đăng ký khuôn mặt mới |
+| `GET` | `/api/v1/get_face/{user_id}` | Lấy thông tin khuôn mặt |
+| `DELETE` | `/api/v1/delete_face/{user_id}` | Xóa khuôn mặt |
+| `POST` | `/api/v1/mobile_checkin` | Chấm công GPS + Khuôn mặt |
+| `GET` | `/api/v1/config` | Lấy cấu hình GPS hiện tại |
+| `POST` | `/api/v1/config` | Cập nhật cấu hình GPS |
+| `GET` | `/api/v1/health` | Kiểm tra trạng thái hệ thống |
 
 ---
 
@@ -190,6 +192,50 @@ Chấm công với xác thực khuôn mặt + GPS.
 
 ---
 
+### `GET /api/v1/config`
+Lấy cấu hình vị trí công ty và khoảng cách check-in hiện tại.
+
+```json
+// Response
+{
+  "success": true,
+  "message": "Configuration retrieved successfully",
+  "company_location": [21.0285, 105.8542],
+  "max_checkin_distance": 1000.0
+}
+```
+
+---
+
+### `POST /api/v1/config`
+Cập nhật cấu hình vị trí công ty và khoảng cách check-in.
+
+**Request:** `application/json`
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `company_location` | List[Float] | ❌ | Vị trí công ty `[latitude, longitude]` |
+| `max_checkin_distance` | Float | ❌ | Khoảng cách tối đa (mét) |
+
+**Example Body:**
+```json
+{
+  "company_location": [21.0285, 105.8542],
+  "max_checkin_distance": 1000
+}
+```
+
+```json
+// Response
+{
+  "success": true,
+  "message": "Configuration updated successfully",
+  "company_location": [21.0285, 105.8542],
+  "max_checkin_distance": 1000.0
+}
+```
+
+---
+
 ## 🚀 Cách sử dụng
 
 ### 1. Cài đặt
@@ -201,14 +247,14 @@ cd FaceDetectAI
 python3 -m venv venv
 source venv/bin/activate
 
-# Cài đặt dependencies
-pip install -r requirements.txt
+# Cài đặt chuyên cho Mobile
+pip install -r requirements_mobile.txt
 ```
 
-### 2. Chạy server
+### 2. Chạy server (Mobile)
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main_mobile:app --host 0.0.0.0 --port 8000
 ```
 
 ### 3. Truy cập API docs
