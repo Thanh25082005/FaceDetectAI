@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import torch
+from utils.config_utils import load_dynamic_config
 
 # === Path Settings ===
 BASE_DIR = Path(__file__).parent.absolute()
@@ -15,7 +16,7 @@ EVIDENCE_DIR.mkdir(exist_ok=True)
 
 # === Device Settings (GPU/CPU) ===
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(f"🚀 Using device: {DEVICE}")
+print(f"Using device: {DEVICE}")
 if DEVICE == 'cuda':
     print(f"   GPU: {torch.cuda.get_device_name(0)}")
     print(f"   VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
@@ -65,8 +66,9 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # === Geolocation Settings ===
-COMPANY_LOCATION = (21.0285, 105.8542)  # (Latitude, Longitude)
-MAX_CHECKIN_DISTANCE = 1000            # Maximum allowed distance in meters
+_dynamic_config = load_dynamic_config()
+COMPANY_LOCATION = tuple(_dynamic_config.get("COMPANY_LOCATION", [21.0285, 105.8542]))  # (Latitude, Longitude)
+MAX_CHECKIN_DISTANCE = _dynamic_config.get("MAX_CHECKIN_DISTANCE", 1000)            # Maximum allowed distance in meters
 
 # === Backward Compatibility Aliases (Do not remove) ===
 FACE_RECOGNITION_THRESHOLD = FR_THRESHOLD
